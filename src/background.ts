@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, type SchedulerState, type Settings } from './types';
+import { DEFAULT_SETTINGS, DEFAULT_STREAK, SKIN_MILESTONES, isYesterday, localDateStr, type SchedulerState, type Settings, type Skin, type StreakState } from './types';
 
 const ALARM_NAME = 'pak-a-boo-next-break';
 // chrome.idle only tracks physical mouse/keyboard input — it can't tell "genuinely away"
@@ -47,6 +47,26 @@ async function scheduleNext(from = Date.now(), cycleStep = 0, breaksToday = 0): 
   await chrome.storage.local.set({ scheduler: state });
   await chrome.alarms.clear(ALARM_NAME);
   await chrome.alarms.create(ALARM_NAME, { when: state.nextBreakAt });
+}
+
+// Called only when a break is genuinely completed. Lives in its own storage key
+// rather than SchedulerState, which scheduleNext() fully replaces from 8 different
+// call sites — folding streak fields in there would mean threading them through
+// every one of those just to avoid clobbering them on the next unrelated reschedule.
+// `today` is captured when the completion message arrives, not when this runs, so a
+// write delayed past local midnight still counts toward the day the break happened.
+let streakWrite: Promise<void> = Promise.resolve();
+
+async function recordCompletion(today: Date): Promise<void> {
+  const { streak } = await chrome.storage.local.get({ streak: DEFAULT_STREAK }) as { streak: StreakState };
+  const todayStr = localDateStr(today);
+  if (streak.lastCompletedDate === todayStr) return; // already counted today
+  const currentStreak = isYesterday(streak.lastCompletedDate, today) ? streak.currentStreak + 1 : 1;
+  const unlockedSkins = [...streak.unlockedSkins];
+  for (const [skin, threshold] of Object.entries(SKIN_MILESTONES) as [Skin, number][]) {
+    if (currentStreak >= threshold && !unlockedSkins.includes(skin)) unlockedSkins.push(skin);
+  }
+  await chrome.storage.local.set({ streak: { currentStreak, lastCompletedDate: todayStr, unlockedSkins } });
 }
 
 async function notifyBreak(): Promise<void> {
@@ -312,13 +332,27 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: true });
   }
   if (message.type === 'TAKE_BREAK') {
+    // Capture arrival time up front: recordCompletion runs later (and serialized), and
+    // a completion that arrives at 23:59 must count toward that day even if the write
+    // itself lands after midnight.
+    const completedAt = new Date();
+    // Default missing/malformed data to "not completed" — safer to undercount than
+    // to let a malformed message inflate the stat.
+    const completed = message.completed === true;
+    // Enqueue SYNCHRONOUSLY, before any await, so completions join the serialized
+    // chain in arrival order — enqueueing later (after the scheduler read/write)
+    // would let two messages' async work race and enqueue out of order. The catch
+    // both logs the failure and keeps the chain usable for the next completion.
+    const pendingStreak = completed
+      ? (streakWrite = streakWrite
+          .then(() => recordCompletion(completedAt))
+          .catch((e) => console.error('Pak-a-boo: streak update failed', e)))
+      : null;
     void chrome.storage.local.remove('sessionInProgressUntil');
     void chrome.storage.local.get('scheduler').then(async ({ scheduler }) => {
       const s = scheduler as SchedulerState | undefined;
-      // Default missing/malformed data to "not completed" — safer to undercount than
-      // to let a malformed message inflate the stat.
-      const completed = message.completed === true;
       await scheduleNext(Date.now(), ((s?.cycleStep ?? 0) + 1) % 3, (s?.breaksToday ?? 0) + (completed ? 1 : 0));
+      if (pendingStreak) await pendingStreak;
       void resolveBreak();
       const { scheduler: fresh } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
       sendResponse({ ok: true, nextBreakAt: fresh?.nextBreakAt ?? null, breaksToday: fresh?.breaksToday ?? 0 });

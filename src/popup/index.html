@@ -3,11 +3,31 @@
   <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pak-a-boo</title></head>
   <body>
     <main>
-      <header><span class="mark"><svg viewBox="40 42 120 130" width="27" height="29" aria-hidden="true"><path d="M48 152 C48 88 68 50 100 50 C132 50 152 88 152 152 C152 163 145 168 139 161 C133 154 127 155 122 162 C117 169 109 169 104 162 C99 155 91 155 86 162 C81 169 73 169 68 162 C63 155 57 154 51 161 C45 168 48 163 48 152 Z" fill="#FBFFFC" stroke="#3E5750" stroke-width="6" stroke-linejoin="round"/><path d="M66 84 C70 66 82 56 96 55 C86 60 76 70 72 88 Z" fill="#FFFFFF" opacity=".9"/><ellipse cx="80" cy="102" rx="10" ry="13" fill="#2B3A3C"/><circle cx="83.5" cy="95.5" r="3.8" fill="#fff"/><ellipse cx="120" cy="102" rx="10" ry="13" fill="#2B3A3C"/><circle cx="123.5" cy="95.5" r="3.8" fill="#fff"/><ellipse cx="63" cy="122" rx="12" ry="7.5" fill="#E5AFAC" opacity=".6"/><ellipse cx="137" cy="122" rx="12" ry="7.5" fill="#E5AFAC" opacity=".6"/></svg></span><div class="head-text"><h1>Pak-a-boo</h1><p id="tagline"></p></div><div class="lang-switch" role="group" aria-label="Language"><button type="button" data-lang="en" class="lang-btn">EN</button><button type="button" data-lang="th" class="lang-btn">TH</button></div></header>
+      <header><span class="mark"><svg viewBox="28 34 136 150" width="27" height="29" aria-hidden="true"><path d="M106 38 C142 38 160 70 160 108 C160 134 156 154 152 168 C150 177 141 179 137 170 C133 160 124 160 120 170 C116 180 107 180 103 170 C99 160 90 160 86 170 C82 179 72 179 68 169 C64 159 55 160 50 167 C44 176 35 173 33 162 C31 148 38 126 44 110 C48 68 72 38 106 38 Z" fill="#FBFFFC" stroke="#000000" stroke-width="7" stroke-linejoin="round"/><path d="M62 78 C70 60 84 50 100 48 C86 56 74 68 68 84 Z" fill="#FFFFFF" opacity=".9"/><ellipse cx="72" cy="98" rx="11" ry="7" fill="#E5AFAC" opacity=".6"/><ellipse cx="132" cy="98" rx="11" ry="7" fill="#E5AFAC" opacity=".6"/><ellipse cx="86" cy="98" rx="11" ry="14" fill="#1F2B2E"/><circle cx="90" cy="90" r="4.2" fill="#fff"/><ellipse cx="126" cy="98" rx="11" ry="14" fill="#1F2B2E"/><circle cx="130" cy="90" r="4.2" fill="#fff"/><path d="M97 118 Q106 128 115 118" fill="none" stroke="#1F2B2E" stroke-width="5" stroke-linecap="round"/></svg></span><div class="head-text"><h1>Pak-a-boo</h1><p id="tagline"></p></div><div class="lang-switch" role="group" aria-label="Language"><button type="button" data-lang="en" class="lang-btn">EN</button><button type="button" data-lang="th" class="lang-btn">TH</button></div></header>
       <section class="next"><button id="reset" class="reset-btn" type="button"><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="M16.5 10a6.5 6.5 0 1 1-1.9-4.6M16.5 3v4h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span class="eyebrow" id="next-peek-label"></span><strong id="countdown">--:--</strong><span id="break-label"></span></section>
       <div class="actions"><button id="focus"></button><button id="power"></button></div>
       <section class="stats"><div><strong id="breaks">0</strong><span id="breaks-label"></span></div><div><strong id="status"></strong></div></section>
-      <footer><a id="cocoa-link" href="https://ko-fi.com/iamacatperson" target="_blank" rel="noopener noreferrer"></a><span>v0.2 M2</span></footer>
+      <section class="skins">
+        <div class="streak-card">
+          <span class="streak-flame" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 2 C13 6 17 8 17 13 C17 17.5 14.5 20 12 20 C9.5 20 7 17.5 7 13 C7 11 8 10 8.5 9 C8.5 11 10 11.5 10.5 10.5 C9 7 10 4 12 2 Z" fill="#F3A93B" stroke="#3E5750" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+          <div class="streak-info">
+            <strong id="streak-count">0</strong>
+            <span id="streak-caption"></span>
+          </div>
+          <div class="streak-progress" id="streak-progress">
+            <i class="streak-dot"></i>
+            <i class="streak-dot"></i>
+            <i class="streak-dot"></i>
+          </div>
+        </div>
+        <div class="skin-row" role="group" aria-label="Ghost skins">
+          <button type="button" class="skin-btn" data-skin="none" aria-label="Ghost"><svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M6 20 C6 10 8 4 12 4 C16 4 18 10 18 20 C18 21 17 21 16 20 C15 19 14 21 13 20 C12 19 11 21 10 20 C9 19 8 21 7 20 C6 21 6 21 6 20 Z" fill="#FBFFFC" stroke="#3E5750" stroke-width="1.6" stroke-linejoin="round"/><circle cx="9.5" cy="11" r="1.3" fill="#2B3A3C"/><circle cx="14.5" cy="11" r="1.3" fill="#2B3A3C"/></svg></button>
+          <button type="button" class="skin-btn" data-skin="sprout" aria-label="Sprout"><svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M12 17 C12 10 16 6 20 7 C19 12 16 16 12 17 Z" fill="#4F9C82" stroke="#3E5750" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 17 C12 12 8 9 4 10 C5 14 8 16 12 17 Z" fill="#BFE3C7" stroke="#3E5750" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 20 L12 17" stroke="#3E5750" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+          <button type="button" class="skin-btn" data-skin="phones" aria-label="Headphones"><svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M5 15 V11 a7 7 0 0 1 14 0 V15" fill="none" stroke="#3E5750" stroke-width="1.8" stroke-linecap="round"/><rect x="3.5" y="13" width="5" height="7" rx="2.2" fill="#ABB3B1" stroke="#3E5750" stroke-width="1.5"/><rect x="15.5" y="13" width="5" height="7" rx="2.2" fill="#ABB3B1" stroke="#3E5750" stroke-width="1.5"/></svg></button>
+          <button type="button" class="skin-btn" data-skin="crown" aria-label="Crown"><svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M4 16 L6 6 L10 11 L12 4 L14 11 L18 6 L20 16 Z" fill="#F3A93B" stroke="#3E5750" stroke-width="1.6" stroke-linejoin="round"/><circle cx="6" cy="6" r="1" fill="#3E5750"/><circle cx="12" cy="4" r="1.1" fill="#3E5750"/><circle cx="18" cy="6" r="1" fill="#3E5750"/></svg></button>
+        </div>
+      </section>
+      <footer><a id="cocoa-link" href="https://ko-fi.com/iamacatperson" target="_blank" rel="noopener noreferrer"></a><span>v1.0.0</span></footer>
     </main>
     <script type="module" src="./popup.ts"></script>
   </body>

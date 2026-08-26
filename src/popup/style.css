@@ -30,4 +30,20 @@ h1 { margin: 0; font-size: 21px; line-height: 1; font-weight: 800; } p { margin:
 .next span:last-child { font-size: 12px; color: #6E8880; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } button { padding: 10px 6px; border: 1px solid #B9D4C8; border-radius: 10px; background: #BFE3C7; color: #2E4038; cursor: pointer; font: 700 12px 'IBM Plex Sans', 'IBM Plex Sans Thai', sans-serif; } button + button { background: transparent; } button:disabled { cursor: not-allowed; opacity: .45; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; } .stats div { padding: 12px; border-top: 1px solid #DCEEE4; } .stats strong, .stats span { display: block; } .stats strong { font-size: 16px; } .stats span { margin-top: 3px; color: #6E8880; font-size: 11px; }
+@keyframes flame-flicker { 0%, 100% { transform: scale(1) rotate(-4deg); } 50% { transform: scale(1.14) rotate(4deg); } }
+@keyframes dot-pulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(243, 169, 59, .5); } 50% { transform: scale(1.35); box-shadow: 0 0 0 4px rgba(243, 169, 59, 0); } }
+.skins { margin-top: 16px; padding-top: 12px; border-top: 1px solid #DCEEE4; }
+.streak-card { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: linear-gradient(135deg, #FFF3E0, #FBFFFC); border: 1px solid #F3D08A; border-radius: 14px; }
+.streak-flame { font-size: 26px; transform-origin: 70% 90%; animation: flame-flicker 1.6s ease-in-out infinite; }
+.streak-info { flex: 1; min-width: 0; }
+.streak-info strong { display: block; font-size: 22px; line-height: 1; }
+.streak-info span { display: block; margin-top: 2px; font-size: 10px; letter-spacing: .6px; text-transform: uppercase; font-weight: 800; color: #6E8880; }
+.streak-progress { display: flex; gap: 5px; flex: none; }
+.streak-dot { width: 9px; height: 9px; border-radius: 50%; background: #E7ECEA; border: 2px solid #DCEEE4; }
+.streak-dot.reached { background: #F3A93B; border-color: #F3A93B; }
+.streak-dot.current { animation: dot-pulse 1.2s ease-in-out infinite; }
+.skin-row { display: flex; gap: 6px; margin-top: 8px; }
+.skin-btn { flex: 1; padding: 8px 0; border: 0; border-radius: 999px; background: #DCEEE4; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.skin-btn.active { background: #4F9C82; }
+.skin-btn:disabled { opacity: .35; filter: grayscale(1); cursor: not-allowed; }
 footer { display: flex; justify-content: space-between; margin-top: 18px; font-size: 11px; color: #6E8880; } a { color: #4F9C82; font-weight: 700; text-decoration: none; }

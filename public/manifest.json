@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pak-a-boo",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "A ghost that peeks in to make you Pak (rest).",
   "permissions": ["alarms", "storage", "idle", "notifications", "scripting"],
   "host_permissions": ["http://*/*", "https://*/*"],

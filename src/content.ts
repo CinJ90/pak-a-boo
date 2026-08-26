@@ -5,29 +5,35 @@ import exercises from './exercises.json';
 import type { Settings } from './types';
 
 type Lang = Settings['language'];
+type Skin = Settings['skin'];
 
 // Palette — cool sage/teal, chosen for relaxation and eye rest (green sits at the peak
 // of human eye sensitivity and reads as calm rather than the old warm coral/cocoa theme).
-const OUT = '#3E5750';    // outlines
+const OUT = '#3E5750';    // outlines (scene props, accessories)
+const INK = '#000000';    // ghost silhouette — bold black contour around body + arms
 const TEXT = '#2E4038';   // headings/body text
-const EYE = '#2B3A3C';
+const EYE = '#1F2B2E';
 const MUTED = '#6E8880';
 const LABEL = '#5C8577';
 const ACCENT = '#4F9C82';
+const PHONE = '#ABB3B1';     // headphones band + earcups
+const PHONE_HL = '#E0E5E3';  // headphone ear pads
 const BUTTER = '#BFE3C7';
 const CARD = '#F6FBF8';
 const TRACK = '#DCEEE4';
 const DOT = '#D5E8DD';
 const SKIP_BORDER = '#B9D4C8';
 const GBODY = '#FBFFFC';
-const BELLY = '#E6F3EA';
 const BLUSH = '#E5AFAC';  // kept a soft dusty rose — pure-green cheeks read as sickly, not cute
 const SILL = '#D8E8D3';
-const SKY = '#C9E8DC';    // the window-gaze scene's sky — the one moment worth leaning cooler
-const STEAM = '#A8BFB6';
-const MUG = '#A9714A';    // a small deliberate warm accent — the mug really is holding cocoa
+const SKY = '#CDE9F3';    // the window-gaze scene's sky — the one moment worth leaning cooler
+const STEAM = '#9DBBAF';
+const MUG = '#7FC3DC';    // a small deliberate accent, distinct from the sage body
 const CLOSE_X = '#9DBBAF';
 const TIP_BG = '#E7F3EC';
+const GOLD = '#F3A93B';   // sparkles + crown — the same amber used for the popup's streak card
+const HEM_HL = '#E3EFF7'; // subtle inner-hem highlight, new rig
+const MUG_HL = '#CDE9F3'; // mug rim highlight
 
 // Bundled locally (not a Google Fonts CDN request) — a content script injects into
 // every page the user visits, so an external font request there would fire constantly
@@ -138,53 +144,82 @@ const GHOST_SVG = `
   <g class="gbody">
     <g class="ghead">
       <g class="hem">
-        <path d="M48 152 C48 88 68 50 100 50 C132 50 152 88 152 152 C152 163 145 168 139 161 C133 154 127 155 122 162 C117 169 109 169 104 162 C99 155 91 155 86 162 C81 169 73 169 68 162 C63 155 57 154 51 161 C45 168 48 163 48 152 Z" fill="${GBODY}" stroke="${OUT}" stroke-width="5.5" stroke-linejoin="round"/>
-        <path d="M66 84 C70 66 82 56 96 55 C86 60 76 70 72 88 Z" fill="#FFFFFF" opacity=".9"/>
-        <ellipse cx="100" cy="140" rx="26" ry="14" fill="${BELLY}" opacity=".8"/>
+        <path d="M106 38 C142 38 160 70 160 108 C160 134 156 154 152 168 C150 177 141 179 137 170 C133 160 124 160 120 170 C116 180 107 180 103 170 C99 160 90 160 86 170 C82 179 72 179 68 169 C64 159 55 160 50 167 C44 176 35 173 33 162 C31 148 38 126 44 110 C48 68 72 38 106 38 Z" fill="${GBODY}"/>
+        <path d="M44 110 C38 126 31 148 33 162 C35 173 44 176 50 167 C55 160 64 159 68 169 C72 179 82 179 86 170 C88 165 92 162 96 162 C72 156 54 136 50 112 Z" fill="${HEM_HL}"/>
+        <path d="M62 78 C70 60 84 50 100 48 C86 56 74 68 68 84 Z" fill="#FFFFFF"/>
+        <path d="M106 38 C142 38 160 70 160 108 C160 134 156 154 152 168 C150 177 141 179 137 170 C133 160 124 160 120 170 C116 180 107 180 103 170 C99 160 90 160 86 170 C82 179 72 179 68 169 C64 159 55 160 50 167 C44 176 35 173 33 162 C31 148 38 126 44 110 C48 68 72 38 106 38 Z" fill="none" stroke="${INK}" stroke-width="7" stroke-linejoin="round"/>
       </g>
+      <ellipse cx="72" cy="98" rx="11" ry="7" fill="${BLUSH}" opacity=".55"/>
+      <ellipse cx="132" cy="98" rx="11" ry="7" fill="${BLUSH}" opacity=".55"/>
       <g class="arm-l">
-        <path d="M50 108 C36 106 30 116 34 126 C38 136 50 138 56 130 Z" fill="${GBODY}" stroke="${OUT}" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M56 120 C34 116 16 124 16 135 C16 146 34 152 56 147 Z" fill="${GBODY}"/>
+        <path d="M56 120 C34 116 16 124 16 135 C16 146 34 152 56 147" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
       </g>
       <g class="arm-r">
-        <path d="M150 108 C164 106 170 116 166 126 C162 136 150 138 144 130 Z" fill="${GBODY}" stroke="${OUT}" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M146 120 C168 116 186 124 186 135 C186 146 168 152 146 147 Z" fill="${GBODY}"/>
+        <path d="M146 120 C168 116 186 124 186 135 C186 146 168 152 146 147" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
         <g class="mug">
-          <rect x="150" y="126" width="24" height="19" rx="6" fill="${MUG}" stroke="${OUT}" stroke-width="3.5"/>
-          <path d="M174 131 q8 4 0 8.5" fill="none" stroke="${OUT}" stroke-width="3.5"/>
-          <rect x="154" y="130" width="16" height="4.5" rx="2.2" fill="#FFF0DC"/>
-          <path class="steam" d="M156 121 q3 -5 0 -10 M168 121 q-3 -5 0 -10" fill="none" stroke="${STEAM}" stroke-width="3" stroke-linecap="round"/>
+          <path d="M186 128 q13 7 0 14" fill="none" stroke="${OUT}" stroke-width="5"/>
+          <rect x="154" y="120" width="34" height="32" rx="8" fill="${MUG}" stroke="${OUT}" stroke-width="5"/>
+          <rect x="159" y="127" width="23" height="7" rx="3.5" fill="${MUG_HL}"/>
+          <path class="steam" d="M162 112 q4 -7 0 -14 M179 112 q-4 -7 0 -14" fill="none" stroke="${STEAM}" stroke-width="3.5" stroke-linecap="round"/>
         </g>
       </g>
       <g class="eyes">
         <g class="eyes-open">
           <g class="eo-in">
-            <ellipse cx="80" cy="102" rx="10" ry="13" fill="${EYE}"/>
-            <circle cx="83.5" cy="95.5" r="3.8" fill="#fff"/>
-            <circle cx="76.5" cy="107.5" r="2.1" fill="#fff" opacity=".7"/>
-            <ellipse cx="120" cy="102" rx="10" ry="13" fill="${EYE}"/>
-            <circle cx="123.5" cy="95.5" r="3.8" fill="#fff"/>
-            <circle cx="116.5" cy="107.5" r="2.1" fill="#fff" opacity=".7"/>
+            <ellipse cx="86" cy="98" rx="11" ry="14" fill="${EYE}"/>
+            <circle cx="90" cy="90" r="4.2" fill="#fff"/>
+            <circle cx="82" cy="104" r="2.4" fill="#fff" opacity=".75"/>
+            <ellipse cx="126" cy="98" rx="11" ry="14" fill="${EYE}"/>
+            <circle cx="130" cy="90" r="4.2" fill="#fff"/>
+            <circle cx="122" cy="104" r="2.4" fill="#fff" opacity=".75"/>
           </g>
           <g class="ec-in">
-            <path d="M70 102 Q80 110 90 102" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
-            <path d="M110 102 Q120 110 130 102" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
+            <path d="M75 98 Q86 107 97 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+            <path d="M115 98 Q126 107 137 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
           </g>
+          <path d="M97 118 Q106 128 115 118" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
         </g>
         <g class="eyes-happy">
-          <path d="M69 105 Q80 91 91 105" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
-          <path d="M109 105 Q120 91 131 105" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+          <path d="M75 102 Q86 86 97 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
+          <path d="M115 102 Q126 86 137 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
+          <path d="M95 118 Q106 132 117 118" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
         </g>
         <g class="eyes-sleep">
-          <path d="M69 100 Q80 110 91 100" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
-          <path d="M109 100 Q120 110 131 100" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+          <path d="M75 96 Q86 106 97 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+          <path d="M115 96 Q126 106 137 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+          <path d="M99 118 Q106 124 113 118" fill="none" stroke="${EYE}" stroke-width="4.5" stroke-linecap="round"/>
         </g>
       </g>
-      <ellipse cx="63" cy="120" rx="12" ry="7.5" fill="${BLUSH}" opacity=".55"/>
-      <ellipse cx="137" cy="120" rx="12" ry="7.5" fill="${BLUSH}" opacity=".55"/>
+      <g class="skin-sprout">
+        <path d="M106 46 V26" fill="none" stroke="${OUT}" stroke-width="5" stroke-linecap="round"/>
+        <g class="leaf-sway">
+          <path d="M106 30 C106 18 116 10 128 12 C127 24 118 32 106 30 Z" fill="${ACCENT}" stroke="${OUT}" stroke-width="4.5" stroke-linejoin="round"/>
+          <path d="M106 34 C106 24 97 17 86 19 C87 29 95 36 106 34 Z" fill="${BUTTER}" stroke="${OUT}" stroke-width="4.5" stroke-linejoin="round"/>
+        </g>
+      </g>
+      <g class="skin-phones">
+        <path d="M52 100 C52 62 76 42 106 42 C136 42 158 64 158 100" fill="none" stroke="${OUT}" stroke-width="13" stroke-linecap="round"/>
+        <path d="M52 100 C52 62 76 42 106 42 C136 42 158 64 158 100" fill="none" stroke="${PHONE}" stroke-width="6.5" stroke-linecap="round"/>
+        <rect x="38" y="92" width="27" height="35" rx="13" fill="${PHONE}" stroke="${OUT}" stroke-width="5.5"/>
+        <rect x="145" y="92" width="27" height="35" rx="13" fill="${PHONE}" stroke="${OUT}" stroke-width="5.5"/>
+        <rect x="45" y="101" width="13" height="18" rx="6.5" fill="${PHONE_HL}"/>
+        <rect x="152" y="101" width="13" height="18" rx="6.5" fill="${PHONE_HL}"/>
+      </g>
+      <g class="skin-crown">
+        <path d="M70 60 L75 28 L88 44 L106 22 L124 44 L137 28 L142 60 Z" fill="${GOLD}" stroke="${OUT}" stroke-width="5.5" stroke-linejoin="round"/>
+        <circle cx="75" cy="28" r="4.5" fill="${GBODY}" stroke="${OUT}" stroke-width="3"/>
+        <circle cx="106" cy="22" r="5" fill="${GBODY}" stroke="${OUT}" stroke-width="3"/>
+        <circle cx="137" cy="28" r="4.5" fill="${GBODY}" stroke="${OUT}" stroke-width="3"/>
+        <path class="crown-shine" d="M82 54 H130" stroke="${GBODY}" stroke-width="4.5" stroke-linecap="round"/>
+      </g>
     </g>
   </g>
-  <g class="wisp"><ellipse cx="26" cy="158" rx="7" ry="5" fill="${GBODY}" stroke="${OUT}" stroke-width="3.5" opacity=".8"/></g>
+  <g class="wisp"><ellipse cx="26" cy="158" rx="7" ry="5" fill="${GBODY}" stroke="${INK}" stroke-width="4" opacity=".8"/></g>
   <rect class="sill" x="6" y="182" width="188" height="20" rx="10" fill="${SILL}" stroke="${OUT}" stroke-width="5"/>
-  <g class="sparkles" fill="${BUTTER}" stroke="${OUT}" stroke-width="2">
+  <path class="ledge" d="M-14 156 H214 V220 H-14 Z" fill="${TRACK}" stroke="${OUT}" stroke-width="5"/>
+  <g class="sparkles" fill="${GOLD}" stroke="${OUT}" stroke-width="2">
     <path class="sp1" d="M26 62 l5 11 11 5 -11 5 -5 11 -5 -11 -11 -5 11 -5 Z"/>
     <path class="sp2" d="M172 42 l4 9 9 4 -9 4 -4 9 -4 -9 -9 -4 9 -4 Z"/>
     <path class="sp3" d="M166 132 l3.5 8 8 3.5 -8 3.5 -3.5 8 -3.5 -8 -8 -3.5 8 -3.5 Z"/>
@@ -219,35 +254,42 @@ const STYLE = `
   @keyframes blinkC { 0%, 90%, 100% { opacity: 0; } 93%, 97% { opacity: 1; } }
   @keyframes wispy { 0%, 100% { transform: rotate(0) translateY(0); } 50% { transform: rotate(-7deg) translateY(-3px); } }
   @keyframes sipk { 0%, 50%, 100% { transform: rotate(0) translateY(0); } 68%, 84% { transform: rotate(-9deg) translateY(5px); } }
-  @keyframes drinkR { 0%, 100% { transform: rotate(-54deg); } 55% { transform: rotate(-66deg); } }
+  @keyframes drinkR { 0%, 100% { transform: rotate(12deg) scaleX(.9); } 55% { transform: rotate(24deg) scaleX(.9); } }
   @keyframes steamk { 0% { opacity: 0; transform: translateY(4px) scale(.9); } 40% { opacity: .9; } 100% { opacity: 0; transform: translateY(-10px) scale(1.1); } }
   @keyframes chink { 0%, 100% { transform: translateY(0); } 45%, 62% { transform: translateY(10px); } }
   @keyframes tiltk { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-20deg); } 75% { transform: rotate(20deg); } }
   @keyframes shrugk { 0%, 100% { transform: translateY(0); } 30% { transform: translateY(-5px); } }
-  @keyframes rollL { 0%, 100% { transform: rotate(14deg) translateY(0); } 30% { transform: rotate(-34deg) translateY(-5px); } 65% { transform: rotate(30deg) translateY(-2px); } }
-  @keyframes rollR { 0%, 100% { transform: rotate(-14deg) translateY(0); } 30% { transform: rotate(34deg) translateY(-5px); } 65% { transform: rotate(-30deg) translateY(-2px); } }
-  @keyframes wristL { 0%, 100% { transform: rotate(72deg); } 50% { transform: rotate(94deg); } }
-  @keyframes wristR { 0%, 100% { transform: rotate(-72deg); } 50% { transform: rotate(-94deg); } }
-  @keyframes reachL { 0%, 100% { transform: translate(10px, -46px) rotate(104deg); } 50% { transform: translate(14px, -54px) rotate(118deg); } }
-  @keyframes reachR { 0%, 100% { transform: translate(-10px, -46px) rotate(-104deg); } 50% { transform: translate(-14px, -54px) rotate(-118deg); } }
+  @keyframes rollL { 0%, 100% { transform: rotate(-6deg); } 30% { transform: rotate(46deg); } 65% { transform: rotate(14deg); } }
+  @keyframes rollR { 0%, 100% { transform: rotate(6deg); } 30% { transform: rotate(-46deg); } 65% { transform: rotate(-14deg); } }
+  @keyframes wristL { 0%, 100% { transform: rotate(22deg) scaleX(1.1); } 50% { transform: rotate(44deg) scaleX(1.1); } }
+  @keyframes wristR { 0%, 100% { transform: rotate(-22deg) scaleX(1.1); } 50% { transform: rotate(-44deg) scaleX(1.1); } }
+  @keyframes reachL { 0%, 100% { transform: rotate(52deg) scaleX(1.35); } 50% { transform: rotate(62deg) scaleX(1.5); } }
+  @keyframes reachR { 0%, 100% { transform: rotate(-52deg) scaleX(1.35); } 50% { transform: rotate(-62deg) scaleX(1.5); } }
+  @keyframes clapL { 0%, 100% { transform: rotate(178deg) scaleX(1.2); } 50% { transform: rotate(182deg) scaleX(1.82); } }
+  @keyframes clapR { 0%, 100% { transform: rotate(-176deg) scaleX(1.28); } 50% { transform: rotate(-180deg) scaleX(1.9); } }
+  @keyframes wiggle { 0%, 100% { transform: rotate(-4deg) translateY(0); } 50% { transform: rotate(4deg) translateY(-4px); } }
   @keyframes sparkk { 0%, 100% { opacity: 0; transform: scale(.3) rotate(0); } 45% { opacity: 1; transform: scale(1.15) rotate(75deg); } }
   @keyframes zzzk { 0% { opacity: 0; transform: translate(0, 0) scale(.5); } 25% { opacity: 1; } 100% { opacity: 0; transform: translate(16px, -30px) scale(1.15); } }
   @keyframes clouddrift { from { transform: translateX(-14px); } to { transform: translateX(16px); } }
   @keyframes pulse { 0%, 100% { transform: scale(1.3); } 50% { transform: scale(1.6); } }
   @keyframes drift-in { from { transform: translateX(56vw) translateY(-10px); } to { transform: translateX(0) translateY(0); } }
+  /* ---- accessory wobble (worn, not pasted on) ---- */
+  @keyframes accwob { 0%, 100% { transform: rotate(-3deg) translateY(0); } 50% { transform: rotate(3deg) translateY(-1.5px); } }
+  @keyframes leafsway { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+  @keyframes crownshine { 0%, 100% { opacity: .25; } 50% { opacity: .85; } }
 
   /* ---- base rig ---- */
   .gbody { transform-origin: 100px 190px; animation: breathe2 4.6s ease-in-out infinite; }
   .ghead { transform-origin: 100px 130px; animation: bob 5.4s ease-in-out infinite; }
-  .hem { transform-origin: 100px 70px; animation: hemwave 5.2s ease-in-out infinite; }
+  .hem { transform-origin: 100px 60px; animation: hemwave 5.2s ease-in-out infinite; }
   .gshadow { transform-origin: 100px 198px; opacity: .14; animation: shadowpulse 4.6s ease-in-out infinite; }
   .wisp { transform-origin: 100px 120px; animation: wispy 6.4s ease-in-out infinite; }
-  .arm-l { transform-origin: 58px 116px; transform: rotate(7deg); }
-  .arm-r { transform-origin: 142px 116px; transform: rotate(-4.5deg); }
+  .arm-l { transform-origin: 50px 135px; transform: rotate(7deg); }
+  .arm-r { transform-origin: 152px 135px; transform: rotate(-4.5deg); }
   .eo-in { animation: blinkO 4.8s infinite; }
   .ec-in { opacity: 0; animation: blinkC 4.8s infinite; }
   .eyes { transition: transform .5s; }
-  .window-scene, .sill, .mug, .sparkles, .zzz, .eyes-happy, .eyes-sleep { display: none; }
+  .window-scene, .sill, .ledge, .mug, .sparkles, .zzz, .eyes-happy, .eyes-sleep, .skin-sprout, .skin-phones, .skin-crown { display: none; }
   .clouds { animation: clouddrift 9s ease-in-out infinite alternate; }
   .steam { animation: steamk 1.7s ease-out infinite; }
   .sp1 { transform-origin: 26px 78px; animation: sparkk 1.8s ease-in-out infinite; }
@@ -259,6 +301,7 @@ const STYLE = `
   /* ---- poses (values from SessionCard.dc.html pose table) ---- */
   .pose-peek .gbody { animation: peekup 3.2s ease-in-out infinite; }
   .pose-peek .eyes { transform: translate(-4px, -2px); }
+  .pose-peek .ledge { display: block; }
   .pose-window .window-scene, .pose-window .sill { display: block; }
   .pose-window .ghead { animation: lookaround 7s ease-in-out infinite; }
   .pose-window .eyes { transform: translate(-6px, -3px); }
@@ -294,6 +337,23 @@ const STYLE = `
   .pose-reach .arm-l { transform: none; animation: reachL 2.2s ease-in-out infinite; }
   .pose-reach .arm-r { transform: none; animation: reachR 2.2s ease-in-out infinite; }
   .pose-reach .gbody { animation: stretchup 2.2s ease-in-out infinite; }
+  .pose-clap .arm-l { transform: none; animation: clapL .7s ease-in-out infinite; }
+  .pose-clap .arm-r { transform: none; animation: clapR .7s ease-in-out infinite; }
+  .pose-clap .gbody { animation: wiggle 1.4s ease-in-out infinite; }
+  .pose-clap .eyes-open { display: none; }
+  .pose-clap .eyes-happy { display: block; }
+  .pose-clap .sparkles { display: block; }
+
+  /* ---- skins (streak unlocks) — accessories wobble independently behind the head
+     bob so they feel worn rather than pasted on. ---- */
+  .skin-sprout { transform-origin: 106px 44px; animation: accwob 4.4s ease-in-out infinite; }
+  .leaf-sway { transform-origin: 106px 28px; animation: leafsway 3.6s ease-in-out infinite; }
+  .skin-phones { transform-origin: 104px 80px; animation: accwob 6.2s ease-in-out infinite; }
+  .skin-crown { transform-origin: 106px 56px; animation: accwob 5.2s ease-in-out infinite; }
+  .crown-shine { animation: crownshine 3s ease-in-out infinite; }
+  .root[data-skin="sprout"] .skin-sprout { display: block; }
+  .root[data-skin="phones"] .skin-phones { display: block; }
+  .root[data-skin="crown"] .skin-crown { display: block; }
 
   /* ---- mascot placement + escalation ---- */
   .mascot { position: fixed; right: 26px; bottom: -220px; z-index: 2147483647; cursor: pointer; transition: bottom .65s cubic-bezier(.34,1.56,.64,1); }
@@ -380,6 +440,22 @@ async function getLang(): Promise<Lang> {
   return language;
 }
 
+async function getSkin(): Promise<Skin> {
+  const { skin } = await chrome.storage.sync.get({ skin: 'none' as Skin }) as { skin: Skin };
+  return skin;
+}
+
+async function getUnlockedSkins(): Promise<Skin[]> {
+  const { streak } = await chrome.storage.local.get('streak') as { streak?: { unlockedSkins?: Skin[] } };
+  return streak?.unlockedSkins ?? [];
+}
+
+// The selection syncs across devices but unlocks are earned per device, so a synced
+// skin this device hasn't unlocked renders as the plain ghost instead.
+function allowedSkin(selected: Skin, unlocked: Skin[]): Skin {
+  return selected === 'none' || unlocked.includes(selected) ? selected : 'none';
+}
+
 async function boot(): Promise<void> {
   // An element left over from BEFORE an extension reload/update is orphaned — its
   // script's chrome.runtime is invalidated, but the DOM it built stays in the page.
@@ -398,13 +474,16 @@ async function boot(): Promise<void> {
   (document.head ?? document.documentElement).append(fontStyle);
 
   let lang: Lang = await getLang();
+  let selectedSkin: Skin = await getSkin();
+  let unlockedSkins: Skin[] = await getUnlockedSkins();
+  const skin: Skin = allowedSkin(selectedSkin, unlockedSkins);
 
   const host = document.createElement('div');
   host.id = 'pak-a-boo-host';
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.innerHTML = `
     <style>${STYLE}</style>
-    <div class="root" data-stage="hidden">
+    <div class="root" data-stage="hidden" data-skin="${skin}">
       <div class="mascot" role="button" tabindex="0">
         <div class="bubble mascot-bubble"></div>
         <div class="mascot-pose">${GHOST_SVG}</div>
@@ -709,19 +788,39 @@ async function boot(): Promise<void> {
     if (message.type === 'BREAK_RESOLVED' && !sessionActive) retreat();
   });
 
-  // Live language switch — re-render whatever's currently visible without resetting
-  // timers, so an open tab updates the moment the setting changes, no refresh needed.
+  // Live language/skin switch — re-render whatever's currently visible without
+  // resetting timers, so an open tab updates the moment the setting changes, no
+  // refresh needed. Each field is gated independently (not a single "return if this
+  // field is missing" at the top) so a skin-only change isn't swallowed by the
+  // language check, and vice versa.
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || !changes.language) return;
-    const next = changes.language.newValue as Lang | undefined;
-    if (!next) return;
-    lang = next;
-    renderStaticLabels();
-    if (root.dataset.stage === 'sit') renderSitBubble();
-    if (root.dataset.stage === 'flop') renderFlopBubble();
-    if (sessionActive || session.classList.contains('on')) {
-      renderKicker();
-      if (sessionActive) renderStepText();
+    // Unlocks live in storage.local; re-gate when they change so a milestone earned
+    // while this tab is open puts the (already-selected) accessory on immediately.
+    if (area === 'local' && changes.streak) {
+      const next = changes.streak.newValue as { unlockedSkins?: Skin[] } | undefined;
+      unlockedSkins = next?.unlockedSkins ?? [];
+      root.dataset.skin = allowedSkin(selectedSkin, unlockedSkins);
+      return;
+    }
+    if (area !== 'sync') return;
+    if (changes.language) {
+      const next = changes.language.newValue as Lang | undefined;
+      if (next) {
+        lang = next;
+        renderStaticLabels();
+        if (root.dataset.stage === 'sit') renderSitBubble();
+        if (root.dataset.stage === 'flop') renderFlopBubble();
+        if (sessionActive || session.classList.contains('on')) {
+          renderKicker();
+          if (sessionActive) renderStepText();
+        }
+      }
+    }
+    if (changes.skin) {
+      // A removed key (sync cleared) falls back to 'none' rather than being ignored,
+      // so open tabs don't keep wearing a deselected accessory until reload.
+      selectedSkin = (changes.skin.newValue as Skin | undefined) ?? 'none';
+      root.dataset.skin = allowedSkin(selectedSkin, unlockedSkins);
     }
   });
 

@@ -1,5 +1,9 @@
 export type BreakKind = 'micro' | 'big';
 
+// Accessories, not recolors — same base ghost, unlocked permanently by hitting a daily
+// break-completion streak (see SKIN_MILESTONES). 'none' is always unlocked.
+export type Skin = 'none' | 'sprout' | 'phones' | 'crown';
+
 export interface Settings {
   microMinutes: number;
   bigMinutes: number;
@@ -8,6 +12,7 @@ export interface Settings {
   // the user explicitly turns it back on.
   enabled: boolean;
   language: 'en' | 'th';
+  skin: Skin;
 }
 
 export interface SchedulerState {
@@ -32,5 +37,40 @@ export const DEFAULT_SETTINGS: Settings = {
   bigMinutes: 20,
   focusUntil: null,
   enabled: true,
-  language: 'en'
+  language: 'en',
+  skin: 'none'
 };
+
+export interface StreakState {
+  currentStreak: number;
+  lastCompletedDate: string | null; // YYYY-MM-DD, local time
+  unlockedSkins: Skin[];
+}
+
+export const SKIN_MILESTONES: Record<Exclude<Skin, 'none'>, number> = {
+  sprout: 1,
+  phones: 3,
+  crown: 5
+};
+
+export const DEFAULT_STREAK: StreakState = {
+  currentStreak: 0,
+  lastCompletedDate: null,
+  unlockedSkins: []
+};
+
+export function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// Local calendar-day comparison (not ms-subtraction) so a DST transition's 23- or
+// 25-hour day can't miscount which date "yesterday" actually was.
+export function isYesterday(prevDateStr: string | null, today: Date): boolean {
+  if (!prevDateStr) return false;
+  const y = new Date(today);
+  y.setDate(y.getDate() - 1);
+  return localDateStr(y) === prevDateStr;
+}
