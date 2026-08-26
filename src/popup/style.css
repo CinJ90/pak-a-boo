@@ -1,0 +1,33 @@
+@font-face { font-family: 'IBM Plex Sans'; font-weight: 500; font-display: swap; src: url('/fonts/ibm-plex-sans-latin.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans'; font-weight: 700; font-display: swap; src: url('/fonts/ibm-plex-sans-latin.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans Thai'; font-weight: 500; font-display: swap; src: url('/fonts/ibm-plex-sans-thai-500.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans Thai'; font-weight: 700; font-display: swap; src: url('/fonts/ibm-plex-sans-thai-700.woff2') format('woff2'); }
+
+:root { color: #2E4038; background: #F6FBF8; font-family: 'IBM Plex Sans', 'IBM Plex Sans Thai', sans-serif; }
+/* Defensive: force every element back to explicitly inheriting, in case anything else
+   in this popup document ends up in the same situation as <body> below. */
+* { box-sizing: border-box; font-family: inherit; }
+/* In testing, <body>'s computed font-family didn't match :root's declared value even
+   though document.styleSheets showed no conflicting rule and a plain `font-family:
+   inherit` (via the `*` rule above) didn't fix it either — the exact mechanism is
+   unconfirmed (document.styleSheets can't show a UA-origin rule, if that's what this
+   is), but !important on body is the fix that was empirically verified to work. */
+body { width: 320px; margin: 0; font-family: 'IBM Plex Sans', 'IBM Plex Sans Thai', sans-serif !important; }
+main { padding: 22px; background: radial-gradient(circle at 100% 0, #CDEBDD 0, transparent 42%), #F6FBF8; }
+header { display: flex; gap: 10px; align-items: center; }
+.mark { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; background: #4F9C82; color: #F6FBF8; font-size: 25px; flex: none; }
+.head-text { flex: 1; min-width: 0; }
+h1 { margin: 0; font-size: 21px; line-height: 1; font-weight: 800; } p { margin: 5px 0 0; font-size: 11px; color: #6E8880; }
+.lang-switch { display: flex; flex: none; background: #DCEEE4; border-radius: 999px; padding: 2px; }
+.lang-switch button { border: 0; background: none; padding: 5px 9px; border-radius: 999px; font: 800 11px 'IBM Plex Sans', 'IBM Plex Sans Thai', sans-serif; color: #6E8880; cursor: pointer; }
+.lang-switch button.active { background: #4F9C82; color: #F6FBF8; }
+.next { position: relative; margin: 22px 0 16px; padding: 20px; border: 1px solid #DCEEE4; border-radius: 16px; background: #FBFFFC; text-align: center; }
+.reset-btn { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; padding: 0; display: grid; place-items: center; border: 1px solid #DCEEE4; border-radius: 50%; background: #FBFFFC; color: #6E8880; cursor: pointer; transition: transform .3s, color .2s, border-color .2s; }
+.reset-btn:hover { color: #4F9C82; border-color: #B9D4C8; }
+.reset-btn:active { transform: rotate(-50deg); }
+.eyebrow { display: block; color: #5C8577; font-size: 10px; font-weight: 800; letter-spacing: 1.3px; }
+.next strong { display: block; margin: 4px 0; font-size: 42px; line-height: 1; letter-spacing: 0; }
+.next span:last-child { font-size: 12px; color: #6E8880; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } button { padding: 10px 6px; border: 1px solid #B9D4C8; border-radius: 10px; background: #BFE3C7; color: #2E4038; cursor: pointer; font: 700 12px 'IBM Plex Sans', 'IBM Plex Sans Thai', sans-serif; } button + button { background: transparent; } button:disabled { cursor: not-allowed; opacity: .45; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; } .stats div { padding: 12px; border-top: 1px solid #DCEEE4; } .stats strong, .stats span { display: block; } .stats strong { font-size: 16px; } .stats span { margin-top: 3px; color: #6E8880; font-size: 11px; }
+footer { display: flex; justify-content: space-between; margin-top: 18px; font-size: 11px; color: #6E8880; } a { color: #4F9C82; font-weight: 700; text-decoration: none; }

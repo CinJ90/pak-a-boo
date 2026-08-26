@@ -1,0 +1,50 @@
+[
+  {
+    "id": "chin-tuck",
+    "en": "Chin tuck",
+    "th": "คางชิดคอ",
+    "seconds": 30,
+    "cueEn": "Draw your chin straight back, like making a double chin — don't tip your head down.",
+    "cueTh": "ดึงคางเข้าหาคอตรง ๆ เหมือนทำคางสองชั้น อย่าก้มหน้า"
+  },
+  {
+    "id": "neck-tilt",
+    "en": "Neck side tilt",
+    "th": "เอียงคอ",
+    "seconds": 30,
+    "cueEn": "Gently tilt one ear toward that shoulder, keep both shoulders relaxed and down.",
+    "cueTh": "ค่อย ๆ เอียงหูไปทางไหล่ ผ่อนไหล่ลง อย่ายกไหล่"
+  },
+  {
+    "id": "shoulder-rolls",
+    "en": "Shoulder rolls",
+    "th": "หมุนหัวไหล่",
+    "seconds": 30,
+    "cueEn": "Roll both shoulders up, back, and down in a big slow circle.",
+    "cueTh": "หมุนไหล่ทั้งสองข้างขึ้น-ไปข้างหลัง-ลง เป็นวงกลมใหญ่"
+  },
+  {
+    "id": "wrist-stretch",
+    "en": "Wrist stretch",
+    "th": "ยืดข้อมือ",
+    "seconds": 30,
+    "cueEn": "Extend one arm out, palm facing you, gently pull the fingers back with your other hand.",
+    "cueTh": "เหยียดแขนออก หงายฝ่ามือเข้าหาตัว ใช้มืออีกข้างดึงนิ้วเบา ๆ"
+  },
+  {
+    "id": "chest-opener",
+    "en": "Chest opener",
+    "th": "เปิดอก",
+    "seconds": 30,
+    "cueEn": "Clasp your hands behind your back and gently lift your chest up and forward.",
+    "cueTh": "ประสานมือไว้ด้านหลัง ยกอกขึ้นไปข้างหน้าเบา ๆ"
+  },
+  {
+    "id": "reach",
+    "en": "Overhead reach",
+    "th": "ยืดตัว",
+    "seconds": 30,
+    "cueEn": "Reach both arms straight overhead and stretch your whole body upward.",
+    "cueTh": "เหยียดแขนทั้งสองข้างขึ้นเหนือหัว ยืดตัวขึ้นให้สุด"
+  }
+]

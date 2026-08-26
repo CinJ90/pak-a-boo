@@ -1,0 +1,17 @@
+{
+  "name": "pak-a-boo",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}

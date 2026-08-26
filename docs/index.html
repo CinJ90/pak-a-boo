@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pak-a-boo — Privacy &amp; Terms</title>
+<style>
+  :root { color: #2E4038; background: #F6FBF8; font-family: system-ui, -apple-system, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+  .mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: #4F9C82; flex: none; }
+  h1 { margin: 0; font-size: 26px; }
+  .tagline { margin: 4px 0 0; color: #6E8880; font-size: 14px; }
+  .updated { margin: 28px 0 40px; padding: 12px 16px; background: #DCEEE4; border-radius: 10px; font-size: 13px; color: #3E5750; }
+  h2 { font-size: 20px; margin: 40px 0 12px; padding-top: 8px; border-top: 1px solid #DCEEE4; }
+  h2:first-of-type { border-top: none; padding-top: 0; }
+  h3 { font-size: 15px; margin: 20px 0 6px; color: #3E5750; }
+  p, li { line-height: 1.65; color: #2E4038; font-size: 15px; }
+  ul { padding-left: 22px; }
+  .badge { display: inline-block; margin: 2px 6px 2px 0; padding: 4px 10px; background: #F6FBF8; border: 1px solid #DCEEE4; border-radius: 999px; font-size: 12.5px; color: #5C8577; font-weight: 600; }
+  .note { margin-top: 6px; padding: 14px 16px; background: #FBFFFC; border: 1.5px dashed #B9D4C8; border-radius: 12px; font-size: 14px; }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid #DCEEE4; font-size: 13px; color: #6E8880; }
+  a { color: #4F9C82; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <span class="mark"><svg viewBox="40 42 120 130" width="27" height="29" aria-hidden="true"><path d="M48 152 C48 88 68 50 100 50 C132 50 152 88 152 152 C152 163 145 168 139 161 C133 154 127 155 122 162 C117 169 109 169 104 162 C99 155 91 155 86 162 C81 169 73 169 68 162 C63 155 57 154 51 161 C45 168 48 163 48 152 Z" fill="#FBFFFC" stroke="#3E5750" stroke-width="6" stroke-linejoin="round"/><path d="M66 84 C70 66 82 56 96 55 C86 60 76 70 72 88 Z" fill="#FFFFFF" opacity=".9"/><ellipse cx="80" cy="102" rx="10" ry="13" fill="#2B3A3C"/><circle cx="83.5" cy="95.5" r="3.8" fill="#fff"/><ellipse cx="120" cy="102" rx="10" ry="13" fill="#2B3A3C"/><circle cx="123.5" cy="95.5" r="3.8" fill="#fff"/><ellipse cx="63" cy="122" rx="12" ry="7.5" fill="#E5AFAC" opacity=".6"/><ellipse cx="137" cy="122" rx="12" ry="7.5" fill="#E5AFAC" opacity=".6"/></svg></span>
+    <div>
+      <h1>Pak-a-boo</h1>
+      <p class="tagline">A ghost that peeks in to make you พัก (rest).</p>
+    </div>
+  </header>
+
+  <div class="updated">Last updated: August 26, 2026 — applies to the Pak-a-boo Chrome extension, all versions.</div>
+
+  <h2>Privacy Policy</h2>
+
+  <p><strong>Short version: Pak-a-boo collects nothing.</strong> There are no accounts, no backend server, and no analytics of any kind. Everything the extension needs — your break schedule, today's stats, your language and focus settings — is stored locally on your device using Chrome's built-in storage, and never transmitted anywhere.</p>
+
+  <span class="badge">No data collection</span>
+  <span class="badge">No accounts</span>
+  <span class="badge">No servers</span>
+  <span class="badge">No analytics</span>
+  <span class="badge">No remote code</span>
+
+  <h3>What's stored, and where</h3>
+  <p>All of the following stays on your device, inside Chrome's local extension storage, and is deleted automatically if you uninstall the extension:</p>
+  <ul>
+    <li>Your break rhythm progress (cycle position, today's completed-break count)</li>
+    <li>Your preferences (language, focus mode, on/off state)</li>
+  </ul>
+  <p>None of this is synced to any external service, sent over the network, or accessible to anyone but you.</p>
+
+  <h3>Why each permission is needed</h3>
+  <ul>
+    <li><strong>alarms</strong> — schedules break reminders reliably, since the extension's background process can be suspended by Chrome at any time.</li>
+    <li><strong>storage</strong> — saves your schedule and preferences locally, as described above.</li>
+    <li><strong>idle</strong> — detects when you've stepped away from your computer, so a long absence is treated as a break already taken rather than an ignored reminder.</li>
+    <li><strong>notifications</strong> — shows a native system notification when a break is due, as a fallback for when the in-page reminder isn't visible.</li>
+    <li><strong>scripting</strong> — injects the reminder overlay into tabs that were already open before the extension was installed or updated.</li>
+    <li><strong>Host permissions (all sites)</strong> — the reminder overlay needs to appear on whatever page you're viewing when a break comes due, since reminders are timing-based and not tied to any specific site. The extension does not read, modify, or transmit the content of any page — it only displays its own overlay UI.</li>
+  </ul>
+
+  <h3>Third parties</h3>
+  <p>Pak-a-boo does not use any third-party analytics, advertising, or tracking services. The only external link in the extension is an optional, entirely voluntary "buy me a cocoa" donation link to a third-party payment page (Ko-fi), which you are never required to visit or use.</p>
+
+  <h3>Children's privacy</h3>
+  <p>Pak-a-boo is not directed at children and does not knowingly collect information from anyone, of any age — because it does not collect information at all.</p>
+
+  <h3>Changes to this policy</h3>
+  <p>If this policy ever changes, the updated version will be posted on this page with a new "last updated" date.</p>
+
+  <h2>Terms &amp; Conditions</h2>
+
+  <h3>License</h3>
+  <p>Pak-a-boo is free, open-source software released under the <a href="https://github.com/CinJ90/pak-a-boo/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>. You're welcome to use, inspect, or modify it under those terms.</p>
+
+  <h3>No warranty</h3>
+  <p>Pak-a-boo is provided "as is," without warranty of any kind. The developer is not liable for any damages or issues arising from its use.</p>
+
+  <div class="note">
+    <strong>Not medical advice.</strong> The stretches, eye-rest cues, and hydration reminders in Pak-a-boo are general wellness suggestions, not medical guidance. If any exercise causes pain or discomfort, stop immediately. Consult a healthcare professional for any health concerns, especially before starting a new stretching routine.
+  </div>
+
+  <h3>Cost</h3>
+  <p>Pak-a-boo is free forever. The "buy me a cocoa" link in the popup is a purely optional way to support development — it is never required, and no payment unlocks any feature.</p>
+
+  <h3>Changes</h3>
+  <p>These terms may be updated from time to time; continued use of the extension after an update means you accept the current terms as posted here.</p>
+
+  <footer>
+    Pak-a-boo · <a href="https://github.com/CinJ90/pak-a-boo" target="_blank" rel="noopener noreferrer">Source on GitHub</a>
+  </footer>
+</main>
+</body>
+</html>
