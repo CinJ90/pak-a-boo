@@ -1,3 +1,7 @@
 node_modules/
 dist/
 .DS_Store
+
+# Internal prep docs — kept locally, never pushed (repo is public)
+pak-a-boo-plan.md
+store-listing.md
