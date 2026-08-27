@@ -21,6 +21,11 @@ export interface SchedulerState {
   cycleStep: number;
   snoozes: number;
   breaksToday: number;
+  // Local calendar date (YYYY-MM-DD) breaksToday was last counted for. Lets any reader
+  // tell "still today's count" apart from "stale count from before a day rollover" —
+  // breaksToday itself never auto-resets (scheduleNext's callers just carry the old
+  // value forward), so this is what actually detects the boundary.
+  breaksTodayDate: string;
   lastBreakAt: number | null;
   // The interval (minutes) actually used to compute nextBreakAt. Lets reconcileSchedule
   // tell "settings changed since this was scheduled" apart from "just reloaded, nothing
@@ -48,9 +53,9 @@ export interface StreakState {
 }
 
 export const SKIN_MILESTONES: Record<Exclude<Skin, 'none'>, number> = {
-  sprout: 1,
-  phones: 3,
-  crown: 5
+  sprout: 2,
+  phones: 5,
+  crown: 7
 };
 
 export const DEFAULT_STREAK: StreakState = {

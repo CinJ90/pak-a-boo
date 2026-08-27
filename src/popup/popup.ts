@@ -19,7 +19,11 @@ const COPY = {
     offStatus: 'Off — no reminders',
     cocoa: 'Buy me a cocoa ☕',
     resetCycle: 'Reset cycle',
-    streakCaption: (n: number) => (n === 0 ? 'Start a streak!' : 'day streak'),
+    streakCaption: (n: number, daysToNext: number | null) => {
+      if (n === 0) return 'Start a streak!';
+      if (daysToNext !== null) return `${daysToNext} ${daysToNext === 1 ? 'day' : 'days'} to next skin`;
+      return 'day streak';
+    },
     skinLocked: (n: number) => `Unlock at ${n}-day streak`
   },
   th: {
@@ -37,7 +41,11 @@ const COPY = {
     offStatus: 'ปิดอยู่ — ไม่มีการเตือน',
     cocoa: 'เติมโกโก้ให้เรา ☕',
     resetCycle: 'รีเซ็ตรอบพัก',
-    streakCaption: (n: number) => (n === 0 ? 'เริ่มสตรีคกันเถอะ!' : 'วันติดต่อกัน'),
+    streakCaption: (n: number, daysToNext: number | null) => {
+      if (n === 0) return 'เริ่มสตรีคกันเถอะ!';
+      if (daysToNext !== null) return `อีก ${daysToNext} วัน ปลดล็อกสกินถัดไป`;
+      return 'วันติดต่อกัน';
+    },
     skinLocked: (n: number) => `ปลดล็อกที่สตรีค ${n} วัน`
   }
 } as const;
@@ -59,10 +67,12 @@ const streakCaption = document.querySelector('#streak-caption') as HTMLElement;
 const streakDots = document.querySelectorAll<HTMLElement>('.streak-dot');
 const skinButtons = document.querySelectorAll<HTMLButtonElement>('.skin-btn');
 
-// Ascending unlock thresholds (currently 1/3/5) — derived from SKIN_MILESTONES rather
-// than hardcoded again, so the streak-progress dots can't drift out of sync with the
-// actual unlock logic in background.ts.
-const MILESTONE_THRESHOLDS = Object.values(SKIN_MILESTONES).sort((a, b) => a - b);
+// Ascending [skin, threshold] pairs (currently 2/5/7 for sprout/phones/crown) — derived
+// from SKIN_MILESTONES rather than hardcoded again, so the streak-progress dots and the
+// "days to next skin" hint can't drift out of sync with the actual unlock logic in
+// background.ts.
+const MILESTONES = (Object.entries(SKIN_MILESTONES) as [Skin, number][]).sort((a, b) => a[1] - b[1]);
+const MILESTONE_THRESHOLDS = MILESTONES.map(([, threshold]) => threshold);
 
 async function refresh(): Promise<void> {
   const { scheduler, sessionInProgressUntil, streak } = await chrome.storage.local.get(['scheduler', 'sessionInProgressUntil', 'streak']) as { scheduler?: SchedulerState; sessionInProgressUntil?: number; streak?: StreakState };
@@ -89,16 +99,28 @@ async function refresh(): Promise<void> {
   const last = streak?.lastCompletedDate ?? null;
   const streakAlive = last !== null && (last === localDateStr(now) || isYesterday(last, now));
   const currentStreak = streakAlive ? (streak?.currentStreak ?? 0) : 0;
+  // breaksToday never auto-resets in storage — it only advances via a genuine
+  // completion, same as currentStreak above — so a scheduler doc left over from
+  // before today's first background event (reload, pause/resume, etc.) still shows
+  // yesterday's count until breaksTodayDate says otherwise.
+  const todaysBreaks = scheduler && scheduler.breaksTodayDate === localDateStr(now) ? scheduler.breaksToday : 0;
   streakCount.textContent = String(currentStreak);
-  streakCaption.textContent = c.streakCaption(currentStreak);
+  const unlocked = streak?.unlockedSkins ?? [];
   // One dot per unlock milestone: filled once reached, pulsing on whichever is next
   // (the anticipation cue), plain otherwise.
   const nextIndex = MILESTONE_THRESHOLDS.findIndex((threshold) => currentStreak < threshold);
+  // The caption's "N days to next skin" hint targets the first STILL-LOCKED skin, not
+  // just the next threshold above currentStreak — unlocks are permanent (see
+  // `unlocked` above) but the displayed streak isn't (it expires — see streakAlive),
+  // so after a reset this must skip skins already owned rather than re-counting toward
+  // one the user already has.
+  const nextLockedMilestone = MILESTONES.find(([skin]) => !unlocked.includes(skin));
+  const daysToNext = nextLockedMilestone ? Math.max(0, nextLockedMilestone[1] - currentStreak) : null;
+  streakCaption.textContent = c.streakCaption(currentStreak, daysToNext);
   streakDots.forEach((dot, i) => {
     dot.classList.toggle('reached', currentStreak >= MILESTONE_THRESHOLDS[i]);
     dot.classList.toggle('current', i === nextIndex);
   });
-  const unlocked = streak?.unlockedSkins ?? [];
   // The selection syncs across devices but unlocks are device-local, so a synced
   // skin this device hasn't earned falls back to showing 'none' as active — same
   // rule the content script applies when rendering the ghost.
@@ -134,10 +156,10 @@ async function refresh(): Promise<void> {
     nextPeekLabel.textContent = c.nextPeek;
     countdown.textContent = '--:--';
     status.textContent = c.offStatus;
-    if (scheduler) breaks.textContent = String(scheduler.breaksToday);
+    breaks.textContent = String(todaysBreaks);
     return;
   }
-  if (scheduler) breaks.textContent = String(scheduler.breaksToday);
+  breaks.textContent = String(todaysBreaks);
   if (focusActive && settings.focusUntil) {
     // While focus is active, the underlying scheduled break isn't going to fire —
     // showing a countdown toward it (which just freezes at 00:00 once it passes) is

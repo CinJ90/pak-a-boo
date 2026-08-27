@@ -41,12 +41,24 @@ async function scheduleNext(from = Date.now(), cycleStep = 0, breaksToday = 0): 
     cycleStep,
     snoozes: 0,
     breaksToday,
+    breaksTodayDate: localDateStr(new Date(from)),
     lastBreakAt: null,
     scheduledMinutes: intervalMinutes
   };
   await chrome.storage.local.set({ scheduler: state });
   await chrome.alarms.clear(ALARM_NAME);
   await chrome.alarms.create(ALARM_NAME, { when: state.nextBreakAt });
+}
+
+// Every call site that carries a persisted breaksToday forward into the next
+// scheduleNext() call must go through this — breaksToday itself never auto-resets,
+// so without this a count from yesterday (or last week) keeps accumulating across any
+// reload/pause/resume/idle-forgiveness path that isn't a genuine new completion.
+// `from` is required, not defaulted — every caller must pass the SAME timestamp it
+// gives scheduleNext(), so the day-check and the write it gates can't disagree.
+function effectiveBreaksToday(scheduler: SchedulerState | undefined, from: number): number {
+  if (!scheduler || scheduler.breaksTodayDate !== localDateStr(new Date(from))) return 0;
+  return scheduler.breaksToday;
 }
 
 // Called only when a break is genuinely completed. Lives in its own storage key
@@ -99,12 +111,14 @@ async function notifyBreak(): Promise<void> {
     // anything — nextBreakAt has been sitting stale/overdue this whole time. Give a
     // fresh interval instead of immediately notifying for whatever built up.
     await chrome.storage.local.remove('pausedLastCheck');
-    await scheduleNext(Date.now(), scheduler.cycleStep, scheduler.breaksToday);
+    const lapseNow = Date.now();
+    await scheduleNext(lapseNow, scheduler.cycleStep, effectiveBreaksToday(scheduler, lapseNow));
     return;
   }
   // Ghost gives up after enough ignored nags: skip to the next cycle instead of sulking forever.
   if (scheduler.snoozes >= 3) {
-    await scheduleNext(Date.now(), (scheduler.cycleStep + 1) % 3, scheduler.breaksToday);
+    const giveUpNow = Date.now();
+    await scheduleNext(giveUpNow, (scheduler.cycleStep + 1) % 3, effectiveBreaksToday(scheduler, giveUpNow));
     await resolveBreak();
     return;
   }
@@ -218,7 +232,8 @@ async function reconcileSchedule(): Promise<void> {
   if (scheduler.scheduledMinutes !== configuredMinutes || scheduler.nextBreakAt <= Date.now()) {
     // The interval changed or the persisted break is already overdue — recompute from
     // now, but keep the cycle position and today's count, same as any other reload.
-    await scheduleNext(Date.now(), scheduler.cycleStep, scheduler.breaksToday);
+    const reconcileNow = Date.now();
+    await scheduleNext(reconcileNow, scheduler.cycleStep, effectiveBreaksToday(scheduler, reconcileNow));
     return;
   }
   await chrome.alarms.create(ALARM_NAME, { when: scheduler.nextBreakAt });
@@ -254,7 +269,8 @@ async function reactToPauseChange(newlyPaused: boolean): Promise<void> {
     // Reset the countdown the moment a pause starts — the interval that was already
     // ticking down shouldn't keep silently expiring in the background while paused,
     // only to surface as an overdue break the instant you come back.
-    await scheduleNext(Date.now(), scheduler.cycleStep, scheduler.breaksToday);
+    const pauseNow = Date.now();
+    await scheduleNext(pauseNow, scheduler.cycleStep, effectiveBreaksToday(scheduler, pauseNow));
     await resolveBreak();
     return;
   }
@@ -269,7 +285,8 @@ async function reactToPauseChange(newlyPaused: boolean): Promise<void> {
   // Resuming always starts the next-peek countdown fresh from right now, whether the
   // pause was short (nextBreakAt still ahead) or long (already overdue) — coming back
   // from a pause should feel like a clean restart, not "pick up wherever it was".
-  await scheduleNext(Date.now(), scheduler.cycleStep, scheduler.breaksToday);
+  const resumeNow = Date.now();
+  await scheduleNext(resumeNow, scheduler.cycleStep, effectiveBreaksToday(scheduler, resumeNow));
 }
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) void notifyBreak();
@@ -299,7 +316,8 @@ chrome.idle.onStateChanged.addListener((newState) => {
         // "Forgiven" means this break counts as taken — advance one cycle step like
         // TAKE_BREAK does, not a full reset back to step 0 (which was also silently
         // wiping the whole day's breaksToday count on every long absence).
-        await scheduleNext(Date.now(), ((s?.cycleStep ?? 0) + 1) % 3, s?.breaksToday ?? 0);
+        const forgiveNow = Date.now();
+        await scheduleNext(forgiveNow, ((s?.cycleStep ?? 0) + 1) % 3, effectiveBreaksToday(s, forgiveNow));
         await resolveBreak();
       }
     });
@@ -351,7 +369,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     void chrome.storage.local.remove('sessionInProgressUntil');
     void chrome.storage.local.get('scheduler').then(async ({ scheduler }) => {
       const s = scheduler as SchedulerState | undefined;
-      await scheduleNext(Date.now(), ((s?.cycleStep ?? 0) + 1) % 3, (s?.breaksToday ?? 0) + (completed ? 1 : 0));
+      await scheduleNext(completedAt.getTime(), ((s?.cycleStep ?? 0) + 1) % 3, effectiveBreaksToday(s, completedAt.getTime()) + (completed ? 1 : 0));
       if (pendingStreak) await pendingStreak;
       void resolveBreak();
       const { scheduler: fresh } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
@@ -374,7 +392,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       // today's completed-break count is untouched since that's a separate stat.
       await chrome.storage.local.remove(['sessionInProgressUntil', 'pausedLastCheck']);
       const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
-      await scheduleNext(Date.now(), 0, scheduler?.breaksToday ?? 0);
+      const resetNow = Date.now();
+      await scheduleNext(resetNow, 0, effectiveBreaksToday(scheduler, resetNow));
       await resolveBreak();
       sendResponse({ ok: true });
     });
