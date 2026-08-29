@@ -1,8 +1,10 @@
 export type BreakKind = 'micro' | 'big';
 
-// Accessories, not recolors — same base ghost, unlocked permanently by hitting a daily
-// break-completion streak (see SKIN_MILESTONES). 'none' is always unlocked.
-export type Skin = 'none' | 'sprout' | 'phones' | 'crown';
+// Accessories, not recolors — same base ghost. What exists and how each one unlocks
+// lives in skins.ts; re-exported here so the rest of the app keeps importing `Skin`
+// from one place.
+export type { Skin } from './skins';
+import type { Skin } from './skins';
 
 export interface Settings {
   microMinutes: number;
@@ -39,6 +41,24 @@ export interface SchedulerState {
   breakDueDate: string | null;
 }
 
+// How long a break can sit unattended before it counts as STALE rather than ignored.
+// Comfortably above the 10-minute re-nag interval so ordinary escalation never trips
+// it, and far below the hours a sleeping machine racks up.
+export const STALE_GRACE_MS = 15 * 60_000;
+
+// A sleeping machine (or a suspended Chrome) fires every overdue alarm the instant it
+// wakes. Without this the first thing you see on opening the laptop is a ghost already
+// mid-escalation for a break that came due hours ago — an ambush, and the reason the
+// morning ghost was often found flopped mid-screen.
+//
+// Measured from the last time we actually ACTED on the break (`lastBreakAt`, set on
+// every nag) and only falling back to `nextBreakAt` before the first nag. Measuring
+// from nextBreakAt alone would be wrong: it stays put across re-nags, so a perfectly
+// normal escalation would look stale after half an hour of the user ignoring it.
+export function isStaleBreak(s: SchedulerState, now = Date.now()): boolean {
+  return now - (s.lastBreakAt ?? s.nextBreakAt) > STALE_GRACE_MS;
+}
+
 export const DEFAULT_SETTINGS: Settings = {
   // Per the plan's rhythm: breaks land at absolute clock marks :20/:40/:60 — every gap
   // between consecutive breaks (including the one before the big break) is 20 minutes.
@@ -64,14 +84,11 @@ export interface StreakState {
   // Most recent active date. `lastActiveDate !== lastCompletedDate` (and not the day
   // still in progress) means an active day was missed.
   lastActiveDate: string | null;
+  // Append-only, and never filtered against the known-skin list: an id written by a
+  // NEWER version must survive a downgrade untouched rather than being silently
+  // dropped. Unlocks are permanent.
   unlockedSkins: Skin[];
 }
-
-export const SKIN_MILESTONES: Record<Exclude<Skin, 'none'>, number> = {
-  sprout: 2,
-  phones: 5,
-  crown: 7
-};
 
 export const DEFAULT_STREAK: StreakState = {
   currentStreak: 0,
@@ -95,7 +112,10 @@ function asDate(v: unknown): string | null {
 }
 // Coerces rather than rejects, so a hand-seeded "5" still means 5 — but anything that
 // isn't a finite number lands on 0 instead of poisoning the arithmetic downstream.
-function asCount(v: unknown): number {
+// Exported: skins.ts's normalizeCounters needs the exact same coercion and used to
+// carry its own copy — see that file for why sharing one is worth the cross-module
+// import.
+export function asCount(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
 }

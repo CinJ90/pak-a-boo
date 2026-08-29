@@ -50,8 +50,12 @@ h1 { margin: 0; font-size: 21px; line-height: 1; font-weight: 800; } p { margin:
 .streak-dot { width: 9px; height: 9px; border-radius: 50%; background: #E7ECEA; border: 2px solid #DCEEE4; }
 .streak-dot.reached { background: #F3A93B; border-color: #F3A93B; }
 .streak-dot.current { animation: dot-pulse 1.2s ease-in-out infinite; }
-.skin-row { display: flex; gap: 6px; margin-top: 8px; }
-.skin-btn { flex: 1; padding: 8px 0; border: 0; border-radius: 999px; background: #DCEEE4; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+/* Exactly five slots, always — see SKIN_REGISTRY. A fixed grid (not flex) so the
+   buttons keep their size and the row never reflows as skins are earned. */
+.skin-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
+.skin-btn { padding: 8px 0; border: 0; border-radius: 999px; background: #DCEEE4; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .skin-btn.active { background: #4F9C82; }
 .skin-btn:disabled { opacity: .35; filter: grayscale(1); cursor: not-allowed; }
+/* The legendary slot: its existence is visible, its identity isn't, until earned. */
+.skin-mystery { display: grid; place-items: center; width: 19px; height: 19px; font-size: 14px; font-weight: 800; color: #2E4038; }
 footer { display: flex; justify-content: space-between; margin-top: 18px; font-size: 11px; color: #6E8880; } a { color: #4F9C82; font-weight: 700; text-decoration: none; }

@@ -13,7 +13,7 @@
     "th": "เอียงคอ",
     "seconds": 30,
     "cueEn": "Gently tilt one ear toward that shoulder, keep both shoulders relaxed and down.",
-    "cueTh": "ค่อย ๆ เอียงหูไปทางไหล่ ผ่อนไหล่ลง อย่ายกไหล่"
+    "cueTh": "ค่อย ๆ เอียงหูไปทางไหล่ ผ่อนไหล่ลง อย่ายกไหล่ สลับข้างทุก 15 วินาที"
   },
   {
     "id": "shoulder-rolls",
@@ -29,7 +29,15 @@
     "th": "ยืดข้อมือ",
     "seconds": 30,
     "cueEn": "Extend one arm out, palm facing you, gently pull the fingers back with your other hand.",
-    "cueTh": "เหยียดแขนออก หงายฝ่ามือเข้าหาตัว ใช้มืออีกข้างดึงนิ้วเบา ๆ"
+    "cueTh": "เหยียดแขนออก หงายฝ่ามือเข้าหาตัว ใช้มืออีกข้างดึงนิ้วเบา ๆ สลับข้างทุก 15 วินาที"
+  },
+  {
+    "id": "upper-trap",
+    "en": "Shoulder-top stretch",
+    "th": "ยืดบ่า",
+    "seconds": 30,
+    "cueEn": "Tilt your ear toward one shoulder and let the opposite arm hang, gently reaching down — swap sides halfway.",
+    "cueTh": "เอียงหูไปทางไหล่ข้างหนึ่ง ปล่อยแขนอีกข้างห้อยลงเบา ๆ สลับข้างทุก 15 วินาที"
   },
   {
     "id": "chest-opener",
@@ -38,6 +46,22 @@
     "seconds": 30,
     "cueEn": "Clasp your hands behind your back and gently lift your chest up and forward.",
     "cueTh": "ประสานมือไว้ด้านหลัง ยกอกขึ้นไปข้างหน้าเบา ๆ"
+  },
+  {
+    "id": "thoracic-twist",
+    "en": "Seated twist",
+    "th": "บิดลำตัว",
+    "seconds": 30,
+    "cueEn": "Sit tall, turn your shoulders and look behind you, then breathe — swap sides halfway.",
+    "cueTh": "นั่งหลังตรง บิดไหล่หันไปมองด้านหลัง ค้างไว้แล้วหายใจลึก ๆ สลับข้างทุก 15 วินาที"
+  },
+  {
+    "id": "side-bend",
+    "en": "Side bend",
+    "th": "เอียงลำตัว",
+    "seconds": 30,
+    "cueEn": "Raise one arm overhead and lean the other way until you feel it down your side — swap sides halfway.",
+    "cueTh": "ยกแขนข้างหนึ่งขึ้นเหนือศีรษะ เอียงตัวไปทางตรงข้าม ให้รู้สึกตึงด้านข้างลำตัว สลับข้างทุก 15 วินาที"
   },
   {
     "id": "reach",

@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "dev": "vite build --watch",
+    "build": "vite build && vite build --config vite.content.config.ts",
+    "dev": "node scripts/dev.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

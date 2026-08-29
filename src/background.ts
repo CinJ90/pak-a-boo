@@ -1,4 +1,5 @@
-import { DEFAULT_SETTINGS, SKIN_MILESTONES, localDateStr, normalizeStreak, rollActiveDay, type BreakKind, type SchedulerState, type Settings, type Skin, type StreakState } from './types';
+import { DEFAULT_SETTINGS, isStaleBreak, localDateStr, normalizeStreak, rollActiveDay, type BreakKind, type SchedulerState, type Settings, type Skin, type StreakState } from './types';
+import { activeEventSkin, earnedSkins, moodCounterForHour, normalizeCounters, rollCounters, satisfiedMoods, settleFocus, type Counters } from './skins';
 
 const ALARM_NAME = 'pak-a-boo-next-break';
 // chrome.idle only tracks physical mouse/keyboard input — it can't tell "genuinely away"
@@ -12,6 +13,11 @@ const MIN_AWAY_MS = 15 * 60_000;
 // just before midnight can't make the NEXT day look active either. Any click on the
 // ghost (snooze / skip / take) marks the day regardless — that's presence by definition.
 const PRESENCE_WINDOW_S = 60;
+// A single stable id, reused for every nag of the same ignored break. Re-nagging with
+// a FRESH id each time (the original approach) meant only the newest one ever got
+// tracked for clearing — every earlier re-nag's notification was orphaned in the OS
+// tray. Reusing one id makes each new nag update the existing notification in place.
+const BREAK_NOTIFICATION_ID = 'pak-a-boo-break';
 
 const NOTIFY_COPY = {
   en: {
@@ -118,6 +124,80 @@ async function readStreak(accountingDate: string): Promise<StreakState> {
   return normalizeStreak(streak, accountingDate);
 }
 
+// `accountingDate`/`now` are the day and instant the triggering event belongs to —
+// captured by the CALLER at the moment the event actually happened (arrival of a
+// message, a storage change), never derived from another subsystem's date logic. That
+// decoupling matters: an earlier version keyed the daily mood counters off the
+// STREAK's accounting date, so whether a break shown 23:59 and completed 00:01 counted
+// toward the old day's or new day's mood depended on whether some unrelated event had
+// already rolled the day over — the same input could produce two different outputs.
+// Keying counters purely off their own wall-clock event removes that order-dependence.
+async function readCounters(accountingDate: string, now: number = Date.now()): Promise<Counters> {
+  const { counters } = await chrome.storage.local.get('counters') as { counters?: Partial<Counters> };
+  // rollCounters settles an expired focus period whether or not the day is turning
+  // over — settling BEFORE handing it a cross-day roll would let the roll discard
+  // whatever got folded into the wrong (old) day's total; see its own comment.
+  return rollCounters(normalizeCounters(counters), accountingDate, now);
+}
+
+// Folds newly-earned skins into what's already unlocked. Append-only: existing entries
+// are never reordered or removed, so unlock ORDER is preserved — which is what makes
+// "the most recently earned behaviour look" (resolveDefaultLook) simply the last one.
+//
+// Events are folded in here too: `unlockedSkins` doubles as a "seen once" ledger for
+// anything that has no button of its own (moods AND event costumes), which is what
+// lets the done card celebrate each one the FIRST time it's ever seen and stay quiet
+// every time after. Nothing reads these entries to decide what is WORN — that's
+// activeMood/activeEventSkin over the live counters/date — so recording an event here
+// can't make it wearable outside its window.
+function mergeUnlocks(streak: StreakState, counters: Counters, now: Date): { unlockedSkins: Skin[]; added: Skin[] } {
+  const unlockedSkins = [...streak.unlockedSkins];
+  const added: Skin[] = [];
+  const event = activeEventSkin(now);
+  const gained = [...earnedSkins(streak.currentStreak, counters), ...satisfiedMoods(counters, now.getTime()), ...(event ? [event] : [])];
+  for (const id of gained) {
+    if (!unlockedSkins.includes(id)) { unlockedSkins.push(id); added.push(id); }
+  }
+  return { unlockedSkins, added };
+}
+
+// Records that nightOwl/earlyBird just crossed its threshold, so the most recently
+// reached mood is the one worn when two are satisfied on the same day. Zen is
+// deliberately NOT handled here: while a session is still running its live crossing is
+// already "satisfied" in both `before` and `after` (see skins.ts's zenCrossedAt, which
+// covers that case for display), so this diff would never see it as newly gained; and
+// once the session closes, `settleFocus` has already stamped it — by the time this
+// runs, `before` itself already carries whatever stamp settling produced.
+function noteMood(counters: Counters, before: Counters, now: number): Counters {
+  const had = satisfiedMoods(before, now);
+  const gained = satisfiedMoods(counters, now).filter((m) => !had.includes(m));
+  return gained.length ? { ...counters, lastMood: gained[gained.length - 1], lastMoodAt: now } : counters;
+}
+
+// Counter bumps and unlock evaluation always land in the SAME transaction as the streak
+// write that triggered them, so a skin can never be earned against a half-applied state.
+//
+// Newly-added skins are appended to a PERSISTED `pendingCelebration` list rather than
+// just returned, and only the next completed break drains and clears it (see
+// TAKE_BREAK). A plain return value was tried first and turned out to lose the
+// celebration in exactly the common case: the legendary cat is usually unlocked by
+// markActiveDay() during an ordinary peek, whose return value nothing was listening to
+// — the very next completion would reset the in-memory value before anyone saw it, so
+// the release's centerpiece unlock fired with no card, silently, for every user.
+// Persisting survives that (and a service-worker restart in between) for free.
+async function commitProgress(streak: StreakState, counters: Counters, now: Date = new Date()): Promise<Skin[]> {
+  assertInTransaction('commitProgress');
+  const { unlockedSkins, added } = mergeUnlocks(streak, counters, now);
+  if (added.length === 0) {
+    await chrome.storage.local.set({ streak: { ...streak, unlockedSkins }, counters });
+    return added;
+  }
+  const { pendingCelebration } = await chrome.storage.local.get('pendingCelebration') as { pendingCelebration?: Skin[] };
+  const queued = [...(Array.isArray(pendingCelebration) ? pendingCelebration : []), ...added];
+  await chrome.storage.local.set({ streak: { ...streak, unlockedSkins }, counters, pendingCelebration: queued });
+  return added;
+}
+
 // Is someone demonstrably at the machine right now? System input within
 // PRESENCE_WINDOW_S — but never input from before local midnight: in the first minute
 // of a new day the window shrinks to the seconds elapsed since 00:00, so last night's
@@ -175,8 +255,48 @@ async function markActiveDay(activeDate: string): Promise<boolean> {
   const streak = await readStreak(activeDate);
   const rolled = rollActiveDay(streak, activeDate);
   if (rolled === streak) return false;
-  await chrome.storage.local.set({ streak: rolled });
+  // Opening a day is the one moment activeDaysTotal advances — the legendary skin's
+  // 21 is "21 days you actually showed up", not 21 on the calendar, so time off costs
+  // nothing here just as it costs nothing in the streak. The daily mood counters are
+  // read against NOW (not activeDate — see readCounters) since this is the moment the
+  // day is genuinely opening; activeDate can be an older pinned date on a late re-nag.
+  const now = new Date();
+  const counters = await readCounters(localDateStr(now), now.getTime());
+  counters.activeDaysTotal += 1;
+  await commitProgress(rolled, counters, now);
   return true;
+}
+
+// Focus mode starting and stopping is what Zen Boo reads. Only the time actually spent
+// in focus accrues: `focusStartedAt` opens a period, and it is closed either here (the
+// user cancelled) or lazily by settleFocus (it simply expired — nothing fires then).
+// `changedAt` is captured by the caller at the moment the storage change actually
+// arrived (see the `storage.onChanged` listener) — not inside this queued transaction,
+// which can run a noticeable moment later if the write chain is busy, and would
+// otherwise risk dating a 23:59:59 focus start to the following day.
+async function noteFocusChange(endsAt: number | null, changedAt: Date): Promise<void> {
+  assertInTransaction('noteFocusChange');
+  const now = changedAt.getTime();
+  const today = localDateStr(changedAt);
+  const before = await readCounters(today, now);
+  let counters: Counters;
+  if (endsAt !== null && endsAt > now) {
+    // Started. Re-opening while one is already running keeps the original anchor, so a
+    // double event can't reset the clock and lose accrued time.
+    counters = before.focusStartedAt !== null ? before : { ...before, focusStartedAt: now, focusEndsAt: endsAt };
+  } else {
+    // Cancelled before its end — bank what was actually used, capped at the moment of
+    // cancellation. Delegates to settleFocus (a temporarily-clamped focusEndsAt makes
+    // its banking math produce the exact same result as the manual version this
+    // replaced) rather than duplicating it, so a period that had already live-crossed
+    // Zen's threshold gets the SAME closing-stamp treatment a natural expiry gets — see
+    // settleFocus's own comment for why that stamp has to live in one shared place.
+    counters = before.focusStartedAt === null
+      ? before
+      : settleFocus({ ...before, focusEndsAt: Math.min(before.focusEndsAt ?? now, now) }, now);
+  }
+  counters = noteMood(counters, before, now);
+  await commitProgress(await readStreak(today), counters, changedAt);
 }
 
 // Idle forgiveness: the user walked away for at least a full break interval after
@@ -185,16 +305,20 @@ async function markActiveDay(activeDate: string): Promise<boolean> {
 // could later kill the streak. If the day was never marked (ghost peeked at an empty
 // desk), do nothing: crediting that would hand out free streak days over weekends.
 async function creditForgivenBreak(shownDate: string): Promise<void> {
+  assertInTransaction('creditForgivenBreak');
   const streak = await readStreak(shownDate);
   if (streak.lastActiveDate !== shownDate) return;
-  await recordCompletion(shownDate); // the day is already open; nothing to reset
+  // No completedAt: an absence isn't a break taken at a particular hour, so it must not
+  // feed the late/early counters — only the streak.
+  await recordCompletion(shownDate);
 }
 
 // Called only when a break is genuinely completed, credited to the break's own date
-// (see breakDate). Rolls the active day itself too: a break can be delivered and
-// completed before the alarm's own notifyBreak() has marked anything.
-// Returns whether it opened the day, same as markActiveDay.
-async function recordCompletion(completedDate: string): Promise<boolean> {
+// (see breakDate) FOR STREAK PURPOSES. Rolls the active day itself too: a break can be
+// delivered and completed before the alarm's own notifyBreak() has marked anything.
+//
+// Returns whether it opened the (streak) day, same as markActiveDay.
+async function recordCompletion(completedDate: string, completedAt?: Date): Promise<boolean> {
   assertInTransaction('recordCompletion');
   const before = await readStreak(completedDate);
   // A completion dated BEFORE the newest active day means the clock moved backward:
@@ -207,16 +331,32 @@ async function recordCompletion(completedDate: string): Promise<boolean> {
     : completedDate;
   const streak = rollActiveDay(before, date);
   const openedDay = streak !== before;
+
+  // The DAILY mood counters use their own accounting date/instant — the actual
+  // wall-clock moment this completion arrived (`completedAt`, or "now" for idle
+  // forgiveness, which has no completedAt) — deliberately NOT `date` above. `date` can
+  // be pinned to an older day (breakDueDate) or backdated by the clock-rollback guard;
+  // keying the moods off it made a break shown 23:59 and completed 00:01 land on
+  // different days depending on whether some unrelated event had already rolled the
+  // counters over first. Reading straight off the wall clock removes that dependence.
+  const counterAt = completedAt ?? new Date();
+  const countersBefore = await readCounters(localDateStr(counterAt), counterAt.getTime());
+  let counters = { ...countersBefore };
+  if (openedDay) counters.activeDaysTotal += 1;
+  // `completedAt` is absent for idle-forgiveness: an absence isn't a break taken at a
+  // particular hour, so it must not colour the ghost's mood.
+  const bucket = completedAt ? moodCounterForHour(completedAt.getHours()) : null;
+  if (bucket) counters[bucket] += 1;
+  counters = noteMood(counters, countersBefore, counterAt.getTime());
+
   if (streak.lastCompletedDate === date) {
-    if (openedDay) await chrome.storage.local.set({ streak }); // persist the roll only
-    return openedDay; // already counted
+    // Already counted toward the streak today, but the counters above still moved —
+    // the third late-night break of one evening counts as much as the first.
+    await commitProgress(streak, counters, counterAt);
+    return openedDay;
   }
   const currentStreak = streak.currentStreak + 1; // rollActiveDay already zeroed a dead streak
-  const unlockedSkins = [...streak.unlockedSkins];
-  for (const [skin, threshold] of Object.entries(SKIN_MILESTONES) as [Skin, number][]) {
-    if (currentStreak >= threshold && !unlockedSkins.includes(skin)) unlockedSkins.push(skin);
-  }
-  await chrome.storage.local.set({ streak: { ...streak, currentStreak, lastCompletedDate: date, unlockedSkins } });
+  await commitProgress({ ...streak, currentStreak, lastCompletedDate: date }, counters, counterAt);
   return openedDay;
 }
 
@@ -255,6 +395,20 @@ async function notifyBreak(): Promise<void> {
     await scheduleNext(lapseNow, scheduler.cycleStep, effectiveBreaksToday(scheduler, lapseNow));
     return;
   }
+  // Two reasons to stay quiet and simply start the interval over. Neither is the user
+  // ignoring us, so neither should burn a snooze or leave a ghost sitting on the page:
+  //   1. The break is stale — the machine was asleep or Chrome was suspended, and this
+  //      alarm is only firing now because everything overdue fires on wake.
+  //   2. The screen is locked, which is unambiguously "nobody is here".
+  // Plain 'idle' deliberately does NOT qualify: someone reading a long article or
+  // watching a video registers as idle but is very much present — and is exactly who
+  // needs the eye break.
+  if (isStaleBreak(scheduler) || (await chrome.idle.queryState(PRESENCE_WINDOW_S)) === 'locked') {
+    const quietNow = Date.now();
+    await scheduleNext(quietNow, scheduler.cycleStep, effectiveBreaksToday(scheduler, quietNow));
+    await resolveBreak(); // clear anything a previous nag left on screen
+    return;
+  }
   // Ghost gives up after enough ignored nags: skip to the next cycle instead of sulking forever.
   if (scheduler.snoozes >= 3) {
     const giveUpNow = Date.now();
@@ -277,17 +431,16 @@ async function notifyBreak(): Promise<void> {
   // The OS notification has its own race window if focus/off changes while this call
   // is in flight, so check again immediately before creating it.
   if (isPaused(await getSettings())) return;
-  const notificationId = `break-${Date.now()}`;
   // No callback passed, so @types/chrome resolves this to its void-returning overload —
   // there's nothing to await (the notification still fires; we just don't get its id).
-  chrome.notifications.create(notificationId, {
+  // Reusing BREAK_NOTIFICATION_ID updates the existing re-nag notification in place
+  // instead of stacking a new one every 10 minutes.
+  chrome.notifications.create(BREAK_NOTIFICATION_ID, {
     type: 'basic',
     iconUrl: 'icons/icon-128.png',
     title: isBigBreak ? n.bigTitle : n.microTitle,
     message: isBigBreak ? n.bigMessage : n.microMessage
   });
-  // Tracked so resolveBreak() can clear it later, whichever path resolves this break.
-  await chrome.storage.local.set({ currentNotificationId: notificationId });
   // Re-check the pause state right before broadcasting rather than trusting the value
   // read at the top of this function — closes the narrow window where focus/off gets
   // turned on while this call is in flight.
@@ -296,7 +449,14 @@ async function notifyBreak(): Promise<void> {
   // but only if someone was actually here to see it (prepareShownBreak's presence
   // check); an alarm firing on an idle/locked machine must not count. Called directly,
   // not enqueued: this already IS the transaction.
-  if (present) await markActiveDay(dueDate);
+  if (present) {
+    await markActiveDay(dueDate);
+    // Persisted separately from scheduler.breakDueDate, which the next scheduleNext()
+    // call (a stale-break reschedule, a give-up, a pause) wipes back to null — idle
+    // forgiveness needs to know the date of the last break actually shown to a present
+    // user even after that happens. See the idle.onStateChanged listener below.
+    await chrome.storage.local.set({ lastShownActiveDate: dueDate });
+  }
   await broadcast({ type: 'BREAK_DUE', breakKind: current.breakKind });
 }
 
@@ -322,12 +482,10 @@ async function broadcast(message: { type: string; breakKind?: 'micro' | 'big' })
 // in-page UI can leave its notification sitting in the OS tray indefinitely, and a few
 // re-nags each create their own notification, so they'd pile up.
 async function resolveBreak(): Promise<void> {
-  const { currentNotificationId } = await chrome.storage.local.get('currentNotificationId') as { currentNotificationId?: string };
-  if (currentNotificationId) {
-    // No callback passed, so @types/chrome resolves this to its void-returning overload.
-    chrome.notifications.clear(currentNotificationId);
-    await chrome.storage.local.remove('currentNotificationId');
-  }
+  // No callback passed, so @types/chrome resolves this to its void-returning overload.
+  // Clearing an id with nothing currently shown under it (no nag went out, or it was
+  // already cleared) is a harmless no-op per the notifications API.
+  chrome.notifications.clear(BREAK_NOTIFICATION_ID);
   await broadcast({ type: 'BREAK_RESOLVED' });
 }
 
@@ -359,6 +517,9 @@ async function deliverIfDue(tabId: number): Promise<void> {
   assertInTransaction('deliverIfDue');
   const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
   if (!scheduler || scheduler.nextBreakAt > Date.now()) return;
+  // Same staleness rule as notifyBreak — switching tabs after a night's sleep must not
+  // summon a break from yesterday. The alarm reschedules it moments later.
+  if (isStaleBreak(scheduler)) return;
   // Another tab is already handling this exact break — nextBreakAt won't move until it
   // finishes, so without this a tab switch mid-session would summon a second copy.
   if (await sessionInProgress()) return;
@@ -366,10 +527,29 @@ async function deliverIfDue(tabId: number): Promise<void> {
   const shown = await prepareShownBreak(scheduler);
   chrome.tabs.sendMessage(tabId, { type: 'BREAK_DUE', breakKind: shown.scheduler.breakKind }, () => {
     // lastError means no content script in that tab (chrome://, store, etc.) — the
-    // ghost was NOT shown, so the day isn't marked active for it. This callback fires
-    // after the transaction has ended, so the mark needs its own.
+    // ghost was NOT shown, so neither the active-day mark nor the staleness anchor
+    // below apply. This callback fires after the transaction has ended, so both need
+    // their own.
     if (chrome.runtime.lastError) return;
-    if (shown.present) void enqueueWrite('markActiveDay', () => markActiveDay(shown.dueDate));
+    void enqueueWrite('deliverIfDue:shown', async () => {
+      // A break shown here (not by the alarm) never touched lastBreakAt, so a LATER
+      // alarm for this same break could measure staleness from an old/null anchor and
+      // silently clear a ghost the user is looking at right now. Bump it the same way
+      // notifyBreak's own nag does — showing the break IS the "acted on it" moment.
+      const { scheduler: fresh } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
+      // Only stamp a break that's still the SAME one just delivered — a TAKE_BREAK or
+      // SNOOZE that landed in the meantime already replaced it with a new one, and
+      // stamping that instead would let THIS (already-resolved) break's own later
+      // alarm measure staleness from a fresh anchor and silently clear a ghost nobody
+      // is looking at anymore.
+      if (fresh && fresh.nextBreakAt === shown.scheduler.nextBreakAt) {
+        await chrome.storage.local.set({ scheduler: { ...fresh, lastBreakAt: Date.now() } });
+      }
+      if (shown.present) {
+        await markActiveDay(shown.dueDate);
+        await chrome.storage.local.set({ lastShownActiveDate: shown.dueDate });
+      }
+    });
   });
 }
 
@@ -378,8 +558,41 @@ async function deliverIfDue(tabId: number): Promise<void> {
 // either would wipe today's progress (cycle step, breaksToday) just from reloading the
 // extension or restarting the browser — reconcile against what's persisted instead,
 // and only fall back to a fresh schedule when nothing exists yet.
+// Brings the stored unlock list up to date with the counters, without needing a break
+// to be completed first. Runs at startup so a threshold the user already passed (a new
+// skin in a fresh release, or a seeded counter while testing) takes effect right away.
+// Writes only when something actually changed.
+async function syncUnlocks(): Promise<void> {
+  assertInTransaction('syncUnlocks');
+  const now = new Date();
+  const today = localDateStr(now);
+  const streak = await readStreak(today);
+  const { counters: raw } = await chrome.storage.local.get('counters') as { counters?: Partial<Counters> };
+  let counters = await readCounters(today, now.getTime());
+  // Migration: a totally absent `counters` key predates this feature (v1.0.0/v1.1.0).
+  // A live streak proves that many active days already happened, so seed the legendary
+  // total from it — starting "21 days you've shown up" at 0 for someone who's already
+  // shown up N days running in a row would read as progress being taken away. Older,
+  // non-consecutive history from before any past reset can't be reconstructed and isn't
+  // guessed at; this only ever raises the seed to match the CURRENT streak.
+  const seeded = raw === undefined && streak.currentStreak > counters.activeDaysTotal;
+  if (seeded) counters = { ...counters, activeDaysTotal: streak.currentStreak };
+  if (!seeded && mergeUnlocks(streak, counters, now).added.length === 0) return;
+  await commitProgress(streak, counters, now);
+}
+
 async function reconcileSchedule(): Promise<void> {
   assertInTransaction('reconcileSchedule');
+  // A fresh service-worker instance (extension reload/update, or the browser itself
+  // relaunching) can't trust any idle-absence bookkeeping a PREVIOUS instance left
+  // behind: if the browser was fully closed while the user was away, that absence's
+  // eventual 'active' transition is never observed by anyone — chrome.idle only
+  // reports state changes to a running listener — so a stale idleSince/
+  // idleForgivenessDate/lastShownActiveDate would otherwise sit in storage
+  // indefinitely and get consumed by whatever unrelated absence happens to end next,
+  // crediting a day that has nothing to do with it.
+  await chrome.storage.local.remove(['idleSince', 'idleForgivenessDate', 'lastShownActiveDate']);
+  await syncUnlocks();
   const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
   if (!scheduler) { await scheduleNext(); return; }
   const settings = await getSettings();
@@ -409,7 +622,14 @@ chrome.tabs.onActivated.addListener(({ tabId }) => { void enqueueWrite('deliverI
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'sync') return;
   if (changes.focusUntil) {
-    const newlyPaused = Boolean(changes.focusUntil.newValue && (changes.focusUntil.newValue as number) > Date.now());
+    // Captured HERE, synchronously, not inside the queued transaction below — the write
+    // chain can be busy, and dating the change by when its transaction happens to run
+    // (rather than when it actually fired) could push a 23:59:59 focus start onto the
+    // wrong day's counters.
+    const changedAt = new Date();
+    const newlyPaused = Boolean(changes.focusUntil.newValue && (changes.focusUntil.newValue as number) > changedAt.getTime());
+    const endsAt = typeof changes.focusUntil.newValue === 'number' ? changes.focusUntil.newValue : null;
+    void enqueueWrite('focusChange', () => noteFocusChange(endsAt, changedAt));
     void enqueueWrite('pauseChange', () => reactToPauseChange(newlyPaused));
   }
   if (changes.enabled) {
@@ -422,6 +642,13 @@ async function reactToPauseChange(newlyPaused: boolean): Promise<void> {
   const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
   if (!scheduler) return;
   if (newlyPaused) {
+    // A session already open in some tab is mid-break, not idly counting down — it
+    // ignores BREAK_RESOLVED and keeps running until its own TAKE_BREAK (content.ts).
+    // Rescheduling out from under it would null scheduler.breakDueDate, so a
+    // completion landing after the pause starts would get credited to whatever day it
+    // happens to finish on instead of the day the break was actually shown. Leave it
+    // alone — TAKE_BREAK reschedules for real once that session ends either way.
+    if (await sessionInProgress()) return;
     // Reset the countdown the moment a pause starts — the interval that was already
     // ticking down shouldn't keep silently expiring in the background while paused,
     // only to surface as an overdue break the instant you come back.
@@ -450,17 +677,52 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.idle.onStateChanged.addListener((newState) => {
   if (newState === 'idle' || newState === 'locked') {
-    // idle → locked is a SECOND transition for the same absence (screen lock follows
-    // idle) — don't overwrite the original idleSince, or the away duration undercounts.
-    void chrome.storage.local.get('idleSince').then(({ idleSince }) => {
-      if (typeof idleSince !== 'number') void chrome.storage.local.set({ idleSince: Date.now() });
+    // Enqueued like every other reader of `scheduler`: a bare (unserialized) read here
+    // raced a concurrent TAKE_BREAK/SNOOZE/notifyBreak transaction that's mid-write to
+    // it, and — worse — the read/check/set was three separate steps with no lock
+    // between them, so an idle→locked transition landing while the first snapshot's
+    // set() was still in flight could see a not-yet-written idleSince and take a
+    // second, conflicting snapshot.
+    void enqueueWrite('idleSnapshot', async () => {
+      const { idleSince, scheduler, lastShownActiveDate } = await chrome.storage.local.get(
+        ['idleSince', 'scheduler', 'lastShownActiveDate']
+      ) as { idleSince?: number; scheduler?: SchedulerState; lastShownActiveDate?: string };
+      // idle → locked is a SECOND transition for the same absence (screen lock follows
+      // idle) — don't overwrite the original snapshot, or the away duration
+      // undercounts and a fresh read here could clobber the candidate this absence
+      // actually started with.
+      if (typeof idleSince === 'number') return;
+      // Snapshotted at the moment THIS absence BEGINS, not re-read when it ends — by
+      // the time 'active' fires, an alarm firing during the absence could have
+      // rescheduled scheduler.breakDueDate to something unrelated (a stale reschedule,
+      // a give-up cycling overnight), or lastShownActiveDate could have moved on from
+      // an unrelated later peek. Tying the forgiveness candidate to absence START, not
+      // absence END, is what makes it impossible for a LATER, unrelated absence to
+      // ever reuse a pointer left over from this one.
+      const idleForgivenessDate = scheduler?.breakDueDate
+        ?? (typeof lastShownActiveDate === 'string' ? lastShownActiveDate : null);
+      // lastShownActiveDate is consumed HERE, unconditionally — not only when it was
+      // actually the source used above. Once any absence begins, the old "last shown"
+      // signal is either already captured into idleForgivenessDate, or (if
+      // breakDueDate was the source instead) superseded by that fresher signal either
+      // way; leaving it in storage past this point is exactly what let a later,
+      // unrelated absence's snapshot fall back to it.
+      await chrome.storage.local.remove('lastShownActiveDate');
+      await chrome.storage.local.set({ idleSince: Date.now(), idleForgivenessDate });
     });
     return;
   }
   if (newState === 'active') {
     void enqueueWrite('idleForgiveness', async () => {
-      const { idleSince, scheduler } = await chrome.storage.local.get(['idleSince', 'scheduler']) as { idleSince?: number; scheduler?: SchedulerState };
-      await chrome.storage.local.remove('idleSince');
+      const { idleSince, idleForgivenessDate, scheduler } = await chrome.storage.local.get(
+        ['idleSince', 'idleForgivenessDate', 'scheduler']
+      ) as { idleSince?: number; idleForgivenessDate?: string | null; scheduler?: SchedulerState };
+      // Removed unconditionally, before the pause/threshold checks below — this
+      // snapshot belongs ONLY to the absence that just ended, whether or not it turns
+      // out long enough to forgive, and whether or not reminders happen to be paused
+      // right now. Leaving it past this point is exactly what let a later, unrelated
+      // absence reuse it.
+      await chrome.storage.local.remove(['idleSince', 'idleForgivenessDate']);
       // A short pause (checking your phone, thinking, or just watching the countdown
       // without touching the mouse) should NOT reset it — only forgive it as "break
       // taken" for a genuinely long absence.
@@ -473,8 +735,7 @@ chrome.idle.onStateChanged.addListener((newState) => {
         // "Forgiven" means this break counts as taken — advance one cycle step like
         // TAKE_BREAK does, not a full reset back to step 0 (which was also silently
         // wiping the whole day's breaksToday count on every long absence).
-        // Capture the break's date before scheduleNext() resets it.
-        const shownDate = s?.breakDueDate ?? null;
+        const shownDate = idleForgivenessDate ?? null;
         const forgiveNow = Date.now();
         await scheduleNext(forgiveNow, ((s?.cycleStep ?? 0) + 1) % 3, effectiveBreaksToday(s, forgiveNow));
         await resolveBreak();
@@ -492,6 +753,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     void enqueueWrite('SNOOZE', async () => {
       let snoozeUntil: number | null = null;
       try {
+        // A break resolved through real interaction no longer needs an idle-forgiveness
+        // fallback — leaving it would let an unrelated LATER absence (one that never
+        // itself goes through an idle/locked transition to consume it first, see the
+        // idle.onStateChanged listener) reuse this stale pointer and credit the wrong day.
+        await chrome.storage.local.remove('lastShownActiveDate');
         const { scheduler: s } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
         // Snooze DELAYS whatever's pending — it must never pull a break EARLIER. If the
         // next break isn't due for another 18 minutes, "snooze 5 min" should add 5
@@ -508,7 +774,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           // would ever reset it — so yesterday's leftover big break would keep re-nagging
           // as big, all day.
           const opened: SchedulerState = openedDay ? { ...s, cycleStep: 0, breakKind: 'micro' } : s;
-          await chrome.storage.local.set({ scheduler: { ...opened, nextBreakAt } });
+          // Snoozing IS acting on the break — the same thing lastBreakAt already means
+          // for a nag (see its own comment on SchedulerState). Without this, a snooze
+          // clicked a while after the last nag could measure as stale by the time its
+          // own alarm fires and get silently rescheduled instead of delivered — the
+          // "in 5 min" the user explicitly asked for just never arrives.
+          //
+          // snoozes is also reset to 0 here: it's notifyBreak's give-up counter, and an
+          // explicit "in 5 min" is the opposite of ignoring the ghost. Without this, 3
+          // prior ignored nags followed by this one snooze would make the give-up check
+          // (scheduler.snoozes >= 3) skip the very break the user just asked to see
+          // again — the promised return never arrives.
+          await chrome.storage.local.set({ scheduler: { ...opened, nextBreakAt, lastBreakAt: snoozedAt.getTime(), snoozes: 0 } });
         }
         await chrome.alarms.create(ALARM_NAME, { when: nextBreakAt });
         await resolveBreak();
@@ -525,8 +802,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     // minutes later (which left a window for the same break to be completed twice).
     // Also record it so a tab activated/opened WHILE this session runs doesn't get
     // re-delivered the same still-overdue break (deliverIfDue/CONTENT_READY check this).
-    void chrome.storage.local.set({ sessionInProgressUntil: Date.now() + 10 * 60_000 });
-    void resolveBreak();
+    // Enqueued like every other state write — an unserialized write here could land
+    // between a concurrent transaction's read and write of scheduler/streak and be
+    // invisible to it, reopening the very double-completion window this exists to
+    // close. The sender doesn't pass a callback, so responding synchronously (rather
+    // than waiting on the queued write) changes nothing it observes.
+    void enqueueWrite('SESSION_STARTED', async () => {
+      await chrome.storage.local.set({ sessionInProgressUntil: Date.now() + 10 * 60_000 });
+      await resolveBreak();
+    });
     sendResponse({ ok: true });
   }
   if (message.type === 'TAKE_BREAK') {
@@ -546,10 +830,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     void enqueueWrite('TAKE_BREAK', async () => {
       let ok = false;
       try {
-        await chrome.storage.local.remove('sessionInProgressUntil');
+        // Same reasoning as SNOOZE: a break resolved through real interaction (complete
+        // OR skip — either is an explicit resolution) no longer needs an idle-
+        // forgiveness fallback sitting around for an unrelated later absence to reuse.
+        await chrome.storage.local.remove(['sessionInProgressUntil', 'lastShownActiveDate']);
         const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
         const date = breakDate(scheduler, completedAt);
-        const openedDay = completed ? await recordCompletion(date) : await markActiveDay(date);
+        const openedDay = completed ? await recordCompletion(date, completedAt) : await markActiveDay(date);
         // Same reason as SNOOZE: if acting on this ghost is what opened the day, the
         // break just handled belonged to yesterday's cycle, so the new day's rhythm
         // starts fresh from the next one rather than continuing the old count.
@@ -561,10 +848,36 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         // Always answer — the content script is waiting on this. The read is guarded
         // separately so a failing storage call can't be what stops the reply going out.
         let fresh: SchedulerState | undefined;
+        let unlocked: Skin[] = [];
         try {
           ({ scheduler: fresh } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState });
+          // Drain the celebration queue only on a genuine, SUCCEEDED completion — a
+          // skip has no done card to show it on, and a failed transaction has nothing
+          // to report, so either way anything queued is left for the next one rather
+          // than being silently discarded here. This is what makes the "seen once"
+          // ledger (mergeUnlocks/commitProgress) actually reach the screen: whatever
+          // unlocked a skin — a peek that opened day 21, a cancelled focus session, a
+          // startup sync — none of those have a UI moment of their own, so the reveal
+          // always waits for whichever completed break happens next.
+          //
+          // Only the OLDEST entry is taken, not the whole queue: the done card can only
+          // show one skin, and taking everything at once — as an earlier version did —
+          // marked every queued skin "seen" while displaying just the last of them, so
+          // anything queued alongside it (the legendary cat unlocked in the same
+          // transaction as a mood or event, say) was celebrated exactly nowhere. One at
+          // a time means a backlog drains one completed break at a time instead, which
+          // is a small delay, never a silent loss.
+          if (completed && ok) {
+            const { pendingCelebration } = await chrome.storage.local.get('pendingCelebration') as { pendingCelebration?: Skin[] };
+            if (Array.isArray(pendingCelebration) && pendingCelebration.length > 0) {
+              const [next, ...rest] = pendingCelebration;
+              unlocked = [next];
+              if (rest.length > 0) await chrome.storage.local.set({ pendingCelebration: rest });
+              else await chrome.storage.local.remove('pendingCelebration');
+            }
+          }
         } catch { /* answer with what we know rather than leaving the tab hanging */ }
-        sendResponse({ ok, nextBreakAt: fresh?.nextBreakAt ?? null, breaksToday: fresh?.breaksToday ?? 0 });
+        sendResponse({ ok, nextBreakAt: fresh?.nextBreakAt ?? null, breaksToday: fresh?.breaksToday ?? 0, unlocked });
       }
     });
   }
@@ -606,11 +919,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const { scheduler: s } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
         const paused = isPaused(await getSettings());
         const inSession = await sessionInProgress();
-        if (s && s.nextBreakAt <= Date.now() && !paused && !inSession) {
+        if (s && s.nextBreakAt <= Date.now() && !isStaleBreak(s) && !paused && !inSession) {
           const shown = await prepareShownBreak(s);
           response = { breakDue: true, breakKind: shown.scheduler.breakKind };
-          // The content script shows the ghost on this response.
-          if (shown.present) await markActiveDay(shown.dueDate);
+          // The content script shows the ghost on this response — same reasoning as
+          // deliverIfDue: bump lastBreakAt so a later alarm for this same break can't
+          // measure staleness from a stale/null anchor and silently clear it.
+          await chrome.storage.local.set({ scheduler: { ...shown.scheduler, lastBreakAt: Date.now() } });
+          if (shown.present) {
+            await markActiveDay(shown.dueDate);
+            await chrome.storage.local.set({ lastShownActiveDate: shown.dueDate });
+          }
         } else {
           response = { breakDue: false, nextBreakAt: s && !paused ? s.nextBreakAt : null };
         }

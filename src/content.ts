@@ -1,39 +1,13 @@
 import exercises from './exercises.json';
-// Type-only — erased at compile time, so this never pulls a runtime import into the
-// bundle. Content scripts must stay a single self-contained script (not an ES module),
-// so DEFAULT_SETTINGS is intentionally NOT imported here; see getLang() below.
+// Type-only — erased at compile time. The content script is built as a standalone IIFE
+// (vite.content.config.ts) so VALUE imports are inlined rather than emitted as ES
+// module imports, which Chrome cannot load in an injected content script.
 import type { Settings } from './types';
+import { localDateStr } from './types';
+import { GHOST_SVG, GHOST_RIG_STYLE, OUT, TEXT, MUTED, LABEL, ACCENT, BUTTER, CARD, TRACK, DOT, SKIP_BORDER, CLOSE_X, TIP_BG } from './ghost';
+import { displayedSkin, effectiveUnlocked, normalizeCounters, rollCounters, skinDef, type Counters, type Skin } from './skins';
 
 type Lang = Settings['language'];
-type Skin = Settings['skin'];
-
-// Palette — cool sage/teal, chosen for relaxation and eye rest (green sits at the peak
-// of human eye sensitivity and reads as calm rather than the old warm coral/cocoa theme).
-const OUT = '#3E5750';    // outlines (scene props, accessories)
-const INK = '#000000';    // ghost silhouette — bold black contour around body + arms
-const TEXT = '#2E4038';   // headings/body text
-const EYE = '#1F2B2E';
-const MUTED = '#6E8880';
-const LABEL = '#5C8577';
-const ACCENT = '#4F9C82';
-const PHONE = '#ABB3B1';     // headphones band + earcups
-const PHONE_HL = '#E0E5E3';  // headphone ear pads
-const BUTTER = '#BFE3C7';
-const CARD = '#F6FBF8';
-const TRACK = '#DCEEE4';
-const DOT = '#D5E8DD';
-const SKIP_BORDER = '#B9D4C8';
-const GBODY = '#FBFFFC';
-const BLUSH = '#E5AFAC';  // kept a soft dusty rose — pure-green cheeks read as sickly, not cute
-const SILL = '#D8E8D3';
-const SKY = '#CDE9F3';    // the window-gaze scene's sky — the one moment worth leaning cooler
-const STEAM = '#9DBBAF';
-const MUG = '#7FC3DC';    // a small deliberate accent, distinct from the sage body
-const CLOSE_X = '#9DBBAF';
-const TIP_BG = '#E7F3EC';
-const GOLD = '#F3A93B';   // sparkles + crown — the same amber used for the popup's streak card
-const HEM_HL = '#E3EFF7'; // subtle inner-hem highlight, new rig
-const MUG_HL = '#CDE9F3'; // mug rim highlight
 
 // Bundled locally (not a Google Fonts CDN request) — a content script injects into
 // every page the user visits, so an external font request there would fire constantly
@@ -83,6 +57,7 @@ const COPY = {
     skip: 'Skip',
     next: 'Next',
     doneHeading: 'Nice work~',
+    newLook: (name: string) => `Mr.Boo learned a new look — ${name}!`,
     backToWork: 'Back to work',
     breaksToday: (n: number) => (n === 1 ? '1 break today' : `${n} breaks today`),
     nextBreak: (hhmm: string) => `next break ${hhmm}`
@@ -103,6 +78,7 @@ const COPY = {
     skip: 'ข้าม',
     next: 'ถัดไป',
     doneHeading: 'เก่งมากจ้า~',
+    newLook: (name: string) => `มิสเตอร์บูได้ลุคใหม่ — ${name}!`,
     backToWork: 'ทำงานต่อ',
     breaksToday: (n: number) => `พักไปแล้ว ${n} ครั้งวันนี้`,
     nextBreak: (hhmm: string) => `พักครั้งถัดไป ${hhmm}`
@@ -126,234 +102,18 @@ function stepCopy(id: string, lang: Lang): { label: string; cue: string } {
 }
 
 // ---------------------------------------------------------------------------
-// The ghost rig — one SVG, poses via CSS classes (ported from Ghost.dc.html)
-// ---------------------------------------------------------------------------
-
-const GHOST_SVG = `
-<svg class="ghost" viewBox="0 0 200 214" aria-hidden="true">
-  <g class="window-scene">
-    <rect x="16" y="-6" width="168" height="176" rx="16" fill="${SKY}" stroke="${OUT}" stroke-width="5.5"/>
-    <g class="clouds">
-      <ellipse cx="70" cy="40" rx="19" ry="10" fill="${CARD}" opacity=".95"/>
-      <ellipse cx="86" cy="35" rx="12" ry="8" fill="${CARD}" opacity=".95"/>
-      <ellipse cx="132" cy="72" rx="14" ry="7.5" fill="${CARD}" opacity=".75"/>
-    </g>
-    <path d="M40 0 V166 M160 0 V166" stroke="${OUT}" stroke-width="4.5" opacity=".7"/>
-  </g>
-  <ellipse class="gshadow" cx="100" cy="198" rx="38" ry="6" fill="${OUT}"/>
-  <g class="gbody">
-    <g class="ghead">
-      <g class="hem">
-        <path d="M106 38 C142 38 160 70 160 108 C160 134 156 154 152 168 C150 177 141 179 137 170 C133 160 124 160 120 170 C116 180 107 180 103 170 C99 160 90 160 86 170 C82 179 72 179 68 169 C64 159 55 160 50 167 C44 176 35 173 33 162 C31 148 38 126 44 110 C48 68 72 38 106 38 Z" fill="${GBODY}"/>
-        <path d="M44 110 C38 126 31 148 33 162 C35 173 44 176 50 167 C55 160 64 159 68 169 C72 179 82 179 86 170 C88 165 92 162 96 162 C72 156 54 136 50 112 Z" fill="${HEM_HL}"/>
-        <path d="M62 78 C70 60 84 50 100 48 C86 56 74 68 68 84 Z" fill="#FFFFFF"/>
-        <path d="M106 38 C142 38 160 70 160 108 C160 134 156 154 152 168 C150 177 141 179 137 170 C133 160 124 160 120 170 C116 180 107 180 103 170 C99 160 90 160 86 170 C82 179 72 179 68 169 C64 159 55 160 50 167 C44 176 35 173 33 162 C31 148 38 126 44 110 C48 68 72 38 106 38 Z" fill="none" stroke="${INK}" stroke-width="7" stroke-linejoin="round"/>
-      </g>
-      <ellipse cx="72" cy="98" rx="11" ry="7" fill="${BLUSH}" opacity=".55"/>
-      <ellipse cx="132" cy="98" rx="11" ry="7" fill="${BLUSH}" opacity=".55"/>
-      <g class="arm-l">
-        <path d="M56 120 C34 116 16 124 16 135 C16 146 34 152 56 147 Z" fill="${GBODY}"/>
-        <path d="M56 120 C34 116 16 124 16 135 C16 146 34 152 56 147" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
-      </g>
-      <g class="arm-r">
-        <path d="M146 120 C168 116 186 124 186 135 C186 146 168 152 146 147 Z" fill="${GBODY}"/>
-        <path d="M146 120 C168 116 186 124 186 135 C186 146 168 152 146 147" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
-        <g class="mug">
-          <path d="M186 128 q13 7 0 14" fill="none" stroke="${OUT}" stroke-width="5"/>
-          <rect x="154" y="120" width="34" height="32" rx="8" fill="${MUG}" stroke="${OUT}" stroke-width="5"/>
-          <rect x="159" y="127" width="23" height="7" rx="3.5" fill="${MUG_HL}"/>
-          <path class="steam" d="M162 112 q4 -7 0 -14 M179 112 q-4 -7 0 -14" fill="none" stroke="${STEAM}" stroke-width="3.5" stroke-linecap="round"/>
-        </g>
-      </g>
-      <g class="eyes">
-        <g class="eyes-open">
-          <g class="eo-in">
-            <ellipse cx="86" cy="98" rx="11" ry="14" fill="${EYE}"/>
-            <circle cx="90" cy="90" r="4.2" fill="#fff"/>
-            <circle cx="82" cy="104" r="2.4" fill="#fff" opacity=".75"/>
-            <ellipse cx="126" cy="98" rx="11" ry="14" fill="${EYE}"/>
-            <circle cx="130" cy="90" r="4.2" fill="#fff"/>
-            <circle cx="122" cy="104" r="2.4" fill="#fff" opacity=".75"/>
-          </g>
-          <g class="ec-in">
-            <path d="M75 98 Q86 107 97 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
-            <path d="M115 98 Q126 107 137 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
-          </g>
-          <path d="M97 118 Q106 128 115 118" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
-        </g>
-        <g class="eyes-happy">
-          <path d="M75 102 Q86 86 97 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
-          <path d="M115 102 Q126 86 137 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
-          <path d="M95 118 Q106 132 117 118" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
-        </g>
-        <g class="eyes-sleep">
-          <path d="M75 96 Q86 106 97 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
-          <path d="M115 96 Q126 106 137 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
-          <path d="M99 118 Q106 124 113 118" fill="none" stroke="${EYE}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>
-      </g>
-      <g class="skin-sprout">
-        <path d="M106 46 V26" fill="none" stroke="${OUT}" stroke-width="5" stroke-linecap="round"/>
-        <g class="leaf-sway">
-          <path d="M106 30 C106 18 116 10 128 12 C127 24 118 32 106 30 Z" fill="${ACCENT}" stroke="${OUT}" stroke-width="4.5" stroke-linejoin="round"/>
-          <path d="M106 34 C106 24 97 17 86 19 C87 29 95 36 106 34 Z" fill="${BUTTER}" stroke="${OUT}" stroke-width="4.5" stroke-linejoin="round"/>
-        </g>
-      </g>
-      <g class="skin-phones">
-        <path d="M52 100 C52 62 76 42 106 42 C136 42 158 64 158 100" fill="none" stroke="${OUT}" stroke-width="13" stroke-linecap="round"/>
-        <path d="M52 100 C52 62 76 42 106 42 C136 42 158 64 158 100" fill="none" stroke="${PHONE}" stroke-width="6.5" stroke-linecap="round"/>
-        <rect x="38" y="92" width="27" height="35" rx="13" fill="${PHONE}" stroke="${OUT}" stroke-width="5.5"/>
-        <rect x="145" y="92" width="27" height="35" rx="13" fill="${PHONE}" stroke="${OUT}" stroke-width="5.5"/>
-        <rect x="45" y="101" width="13" height="18" rx="6.5" fill="${PHONE_HL}"/>
-        <rect x="152" y="101" width="13" height="18" rx="6.5" fill="${PHONE_HL}"/>
-      </g>
-      <g class="skin-crown">
-        <path d="M70 60 L75 28 L88 44 L106 22 L124 44 L137 28 L142 60 Z" fill="${GOLD}" stroke="${OUT}" stroke-width="5.5" stroke-linejoin="round"/>
-        <circle cx="75" cy="28" r="4.5" fill="${GBODY}" stroke="${OUT}" stroke-width="3"/>
-        <circle cx="106" cy="22" r="5" fill="${GBODY}" stroke="${OUT}" stroke-width="3"/>
-        <circle cx="137" cy="28" r="4.5" fill="${GBODY}" stroke="${OUT}" stroke-width="3"/>
-        <path class="crown-shine" d="M82 54 H130" stroke="${GBODY}" stroke-width="4.5" stroke-linecap="round"/>
-      </g>
-    </g>
-  </g>
-  <g class="wisp"><ellipse cx="26" cy="158" rx="7" ry="5" fill="${GBODY}" stroke="${INK}" stroke-width="4" opacity=".8"/></g>
-  <rect class="sill" x="6" y="182" width="188" height="20" rx="10" fill="${SILL}" stroke="${OUT}" stroke-width="5"/>
-  <path class="ledge" d="M-14 156 H214 V220 H-14 Z" fill="${TRACK}" stroke="${OUT}" stroke-width="5"/>
-  <g class="sparkles" fill="${GOLD}" stroke="${OUT}" stroke-width="2">
-    <path class="sp1" d="M26 62 l5 11 11 5 -11 5 -5 11 -5 -11 -11 -5 11 -5 Z"/>
-    <path class="sp2" d="M172 42 l4 9 9 4 -9 4 -4 9 -4 -9 -9 -4 9 -4 Z"/>
-    <path class="sp3" d="M166 132 l3.5 8 8 3.5 -8 3.5 -3.5 8 -3.5 -8 -8 -3.5 8 -3.5 Z"/>
-  </g>
-  <g class="zzz" fill="${MUTED}" font-family="'Pak-a-boo Sans', sans-serif" font-weight="800">
-    <text class="z1" x="150" y="120" font-size="18">z</text>
-    <text class="z2" x="150" y="120" font-size="14">z</text>
-  </g>
-</svg>`;
-
-// ---------------------------------------------------------------------------
-// Styles — keyframes ported verbatim from Ghost.dc.html
+// Styles — the rig comes from ghost.ts; only this surface's own chrome lives here.
 // ---------------------------------------------------------------------------
 
 const STYLE = `
   :host { all: initial; }
   * { box-sizing: border-box; font-family: inherit; }
   .root { font-family: 'Pak-a-boo Sans', 'Pak-a-boo Sans Thai', system-ui, -apple-system, sans-serif; }
-  svg.ghost { display: block; overflow: visible; }
 
-  @keyframes breathe2 { 0%, 100% { transform: translateY(0) scale(1, 1); } 30% { transform: translateY(-6px) scale(.985, 1.02); } 62% { transform: translateY(2px) scale(1.018, .984); } }
-  @keyframes bob { 0%, 100% { transform: translate(0, 0) rotate(0); } 24% { transform: translate(-2px, -2px) rotate(-3deg); } 52% { transform: translate(0, 2px) rotate(1deg); } 78% { transform: translate(2px, -1px) rotate(2.6deg); } }
-  @keyframes lookaround { 0%, 34%, 100% { transform: rotate(-5deg) translateY(0); } 12% { transform: rotate(-8deg) translateY(-3px); } 52% { transform: rotate(6deg) translateY(-1px); } 78% { transform: rotate(-2deg) translateY(1px); } }
-  @keyframes hop { 0%, 100% { transform: translateY(0) scale(1, 1); } 14% { transform: translateY(2px) scale(1.09, .9); } 46% { transform: translateY(-22px) scale(.9, 1.12); } 74% { transform: translateY(2px) scale(1.07, .93); } 88% { transform: translateY(-3px) scale(.99, 1.01); } }
-  @keyframes peekup { 0%, 100% { transform: translateY(14px) rotate(-4deg); } 50% { transform: translateY(-2px) rotate(4deg); } }
-  @keyframes openup { 0%, 100% { transform: scale(1, 1) translateY(0); } 50% { transform: scale(1.07, 1.02) translateY(-4px); } }
-  @keyframes stretchup { 0%, 100% { transform: scale(1, 1) translateY(0); } 50% { transform: scale(.93, 1.1) translateY(-8px); } }
-  @keyframes flopk { 0%, 100% { transform: translateY(24px) scale(1.18, .68); } 50% { transform: translateY(26px) scale(1.12, .72); } }
-  @keyframes hemwave { 0%, 100% { transform: skewX(0) scaleY(1); } 35% { transform: skewX(3.5deg) scaleY(1.06); } 70% { transform: skewX(-3deg) scaleY(.96); } }
-  @keyframes shadowpulse { 0%, 100% { transform: scale(1, 1); opacity: .14; } 30% { transform: scale(.86, 1); opacity: .09; } }
-  @keyframes blinkO { 0%, 90%, 100% { opacity: 1; } 93%, 97% { opacity: 0; } }
-  @keyframes blinkC { 0%, 90%, 100% { opacity: 0; } 93%, 97% { opacity: 1; } }
-  @keyframes wispy { 0%, 100% { transform: rotate(0) translateY(0); } 50% { transform: rotate(-7deg) translateY(-3px); } }
-  @keyframes sipk { 0%, 50%, 100% { transform: rotate(0) translateY(0); } 68%, 84% { transform: rotate(-9deg) translateY(5px); } }
-  @keyframes drinkR { 0%, 100% { transform: rotate(12deg) scaleX(.9); } 55% { transform: rotate(24deg) scaleX(.9); } }
-  @keyframes steamk { 0% { opacity: 0; transform: translateY(4px) scale(.9); } 40% { opacity: .9; } 100% { opacity: 0; transform: translateY(-10px) scale(1.1); } }
-  @keyframes chink { 0%, 100% { transform: translateY(0); } 45%, 62% { transform: translateY(10px); } }
-  @keyframes tiltk { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-20deg); } 75% { transform: rotate(20deg); } }
-  @keyframes shrugk { 0%, 100% { transform: translateY(0); } 30% { transform: translateY(-5px); } }
-  @keyframes rollL { 0%, 100% { transform: rotate(-6deg); } 30% { transform: rotate(46deg); } 65% { transform: rotate(14deg); } }
-  @keyframes rollR { 0%, 100% { transform: rotate(6deg); } 30% { transform: rotate(-46deg); } 65% { transform: rotate(-14deg); } }
-  @keyframes wristL { 0%, 100% { transform: rotate(22deg) scaleX(1.1); } 50% { transform: rotate(44deg) scaleX(1.1); } }
-  @keyframes wristR { 0%, 100% { transform: rotate(-22deg) scaleX(1.1); } 50% { transform: rotate(-44deg) scaleX(1.1); } }
-  @keyframes reachL { 0%, 100% { transform: rotate(52deg) scaleX(1.35); } 50% { transform: rotate(62deg) scaleX(1.5); } }
-  @keyframes reachR { 0%, 100% { transform: rotate(-52deg) scaleX(1.35); } 50% { transform: rotate(-62deg) scaleX(1.5); } }
-  @keyframes clapL { 0%, 100% { transform: rotate(178deg) scaleX(1.2); } 50% { transform: rotate(182deg) scaleX(1.82); } }
-  @keyframes clapR { 0%, 100% { transform: rotate(-176deg) scaleX(1.28); } 50% { transform: rotate(-180deg) scaleX(1.9); } }
-  @keyframes wiggle { 0%, 100% { transform: rotate(-4deg) translateY(0); } 50% { transform: rotate(4deg) translateY(-4px); } }
-  @keyframes sparkk { 0%, 100% { opacity: 0; transform: scale(.3) rotate(0); } 45% { opacity: 1; transform: scale(1.15) rotate(75deg); } }
-  @keyframes zzzk { 0% { opacity: 0; transform: translate(0, 0) scale(.5); } 25% { opacity: 1; } 100% { opacity: 0; transform: translate(16px, -30px) scale(1.15); } }
-  @keyframes clouddrift { from { transform: translateX(-14px); } to { transform: translateX(16px); } }
+${GHOST_RIG_STYLE}
+
   @keyframes pulse { 0%, 100% { transform: scale(1.3); } 50% { transform: scale(1.6); } }
   @keyframes drift-in { from { transform: translateX(56vw) translateY(-10px); } to { transform: translateX(0) translateY(0); } }
-  /* ---- accessory wobble (worn, not pasted on) ---- */
-  @keyframes accwob { 0%, 100% { transform: rotate(-3deg) translateY(0); } 50% { transform: rotate(3deg) translateY(-1.5px); } }
-  @keyframes leafsway { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
-  @keyframes crownshine { 0%, 100% { opacity: .25; } 50% { opacity: .85; } }
-
-  /* ---- base rig ---- */
-  .gbody { transform-origin: 100px 190px; animation: breathe2 4.6s ease-in-out infinite; }
-  .ghead { transform-origin: 100px 130px; animation: bob 5.4s ease-in-out infinite; }
-  .hem { transform-origin: 100px 60px; animation: hemwave 5.2s ease-in-out infinite; }
-  .gshadow { transform-origin: 100px 198px; opacity: .14; animation: shadowpulse 4.6s ease-in-out infinite; }
-  .wisp { transform-origin: 100px 120px; animation: wispy 6.4s ease-in-out infinite; }
-  .arm-l { transform-origin: 50px 135px; transform: rotate(7deg); }
-  .arm-r { transform-origin: 152px 135px; transform: rotate(-4.5deg); }
-  .eo-in { animation: blinkO 4.8s infinite; }
-  .ec-in { opacity: 0; animation: blinkC 4.8s infinite; }
-  .eyes { transition: transform .5s; }
-  .window-scene, .sill, .ledge, .mug, .sparkles, .zzz, .eyes-happy, .eyes-sleep, .skin-sprout, .skin-phones, .skin-crown { display: none; }
-  .clouds { animation: clouddrift 9s ease-in-out infinite alternate; }
-  .steam { animation: steamk 1.7s ease-out infinite; }
-  .sp1 { transform-origin: 26px 78px; animation: sparkk 1.8s ease-in-out infinite; }
-  .sp2 { transform-origin: 172px 55px; animation: sparkk 1.8s .5s ease-in-out infinite; }
-  .sp3 { transform-origin: 166px 143px; animation: sparkk 1.8s 1s ease-in-out infinite; }
-  .z1 { animation: zzzk 2.8s ease-out infinite; }
-  .z2 { animation: zzzk 2.8s 1.1s ease-out infinite; }
-
-  /* ---- poses (values from SessionCard.dc.html pose table) ---- */
-  .pose-peek .gbody { animation: peekup 3.2s ease-in-out infinite; }
-  .pose-peek .eyes { transform: translate(-4px, -2px); }
-  .pose-peek .ledge { display: block; }
-  .pose-window .window-scene, .pose-window .sill { display: block; }
-  .pose-window .ghead { animation: lookaround 7s ease-in-out infinite; }
-  .pose-window .eyes { transform: translate(-6px, -3px); }
-  .pose-blink .eo-in { animation: blinkO .6s infinite; }
-  .pose-blink .ec-in { animation: blinkC .6s infinite; }
-  .pose-flop .gbody { animation: flopk 5.2s ease-in-out infinite; }
-  .pose-flop .ghead { animation: bob 7s ease-in-out infinite; }
-  .pose-flop .eyes-open { display: none; }
-  .pose-flop .eyes-sleep { display: block; }
-  .pose-flop .zzz { display: block; }
-  .pose-stand .gbody { animation: hop 1.15s ease-in-out infinite; }
-  .pose-stand .arm-l { transform: rotate(32deg); }
-  .pose-stand .arm-r { transform: rotate(-32deg); }
-  .pose-happy .gbody { animation: hop .95s ease-in-out infinite; }
-  .pose-happy .arm-l { transform: rotate(44deg); }
-  .pose-happy .arm-r { transform: rotate(-44deg); }
-  .pose-happy .eyes-open { display: none; }
-  .pose-happy .eyes-happy { display: block; }
-  .pose-happy .sparkles { display: block; }
-  .pose-drink .mug { display: block; }
-  .pose-drink .arm-r { transform: none; animation: drinkR 2.6s ease-in-out infinite; }
-  .pose-drink .ghead { animation: sipk 2.6s ease-in-out infinite; }
-  .pose-chin-tuck .ghead { animation: chink 2.8s ease-in-out infinite; }
-  .pose-neck-tilt .ghead { animation: tiltk 4s ease-in-out infinite; }
-  .pose-shoulder-rolls .arm-l { transform: none; animation: rollL 1.7s ease-in-out infinite; }
-  .pose-shoulder-rolls .arm-r { transform: none; animation: rollR 1.7s ease-in-out infinite; }
-  .pose-shoulder-rolls .ghead { animation: shrugk 1.7s ease-in-out infinite; }
-  .pose-wrist-stretch .arm-l { transform: none; animation: wristL 1.9s ease-in-out infinite; }
-  .pose-wrist-stretch .arm-r { transform: none; animation: wristR 1.9s ease-in-out infinite; }
-  .pose-chest-opener .arm-l { transform: rotate(46deg); }
-  .pose-chest-opener .arm-r { transform: rotate(-46deg); }
-  .pose-chest-opener .gbody { animation: openup 2.4s ease-in-out infinite; }
-  .pose-reach .arm-l { transform: none; animation: reachL 2.2s ease-in-out infinite; }
-  .pose-reach .arm-r { transform: none; animation: reachR 2.2s ease-in-out infinite; }
-  .pose-reach .gbody { animation: stretchup 2.2s ease-in-out infinite; }
-  .pose-clap .arm-l { transform: none; animation: clapL .7s ease-in-out infinite; }
-  .pose-clap .arm-r { transform: none; animation: clapR .7s ease-in-out infinite; }
-  .pose-clap .gbody { animation: wiggle 1.4s ease-in-out infinite; }
-  .pose-clap .eyes-open { display: none; }
-  .pose-clap .eyes-happy { display: block; }
-  .pose-clap .sparkles { display: block; }
-
-  /* ---- skins (streak unlocks) — accessories wobble independently behind the head
-     bob so they feel worn rather than pasted on. ---- */
-  .skin-sprout { transform-origin: 106px 44px; animation: accwob 4.4s ease-in-out infinite; }
-  .leaf-sway { transform-origin: 106px 28px; animation: leafsway 3.6s ease-in-out infinite; }
-  .skin-phones { transform-origin: 104px 80px; animation: accwob 6.2s ease-in-out infinite; }
-  .skin-crown { transform-origin: 106px 56px; animation: accwob 5.2s ease-in-out infinite; }
-  .crown-shine { animation: crownshine 3s ease-in-out infinite; }
-  .root[data-skin="sprout"] .skin-sprout { display: block; }
-  .root[data-skin="phones"] .skin-phones { display: block; }
-  .root[data-skin="crown"] .skin-crown { display: block; }
 
   /* ---- mascot placement + escalation ---- */
   .mascot { position: fixed; right: 26px; bottom: -220px; z-index: 2147483647; cursor: pointer; transition: bottom .65s cubic-bezier(.34,1.56,.64,1); }
@@ -425,6 +185,8 @@ const STYLE = `
   .done-ghost svg.ghost { width: 150px; height: 160px; }
   .done-th { font-size: 21px; font-weight: 900; }
   .done-sub { font-size: 13px; color: ${MUTED}; margin-top: 4px; line-height: 1.5; }
+  .done-new { font-size: 12.5px; font-weight: 800; color: ${ACCENT}; margin-top: 5px; line-height: 1.45; }
+  .done-new:empty { display: none; }
   .btn-done { display: inline-block; margin-top: 12px; padding: 9px 16px; border-radius: 14px; cursor: pointer;
     font: 800 12.5px 'Pak-a-boo Sans', 'Pak-a-boo Sans Thai', system-ui, sans-serif; color: ${TEXT};
     background: ${BUTTER}; border: 3px solid ${OUT}; box-shadow: 0 3px 0 ${OUT}; }
@@ -434,6 +196,24 @@ const STYLE = `
 // ---------------------------------------------------------------------------
 // DOM
 // ---------------------------------------------------------------------------
+
+// chrome.runtime.sendMessage throws SYNCHRONOUSLY (not via lastError) once this
+// script's context has been invalidated by an extension reload/update — the DOM this
+// boot() built is replaced on the next injection (see the orphaned-element comment
+// above), but this tab's OLD listeners (visibilitychange, the due-timer chain) live on
+// until the page itself reloads, and every one of them eventually calls back in here.
+// Without this, each of those exchanges an uncaught exception rather than the
+// lastError this file's callbacks already know how to ignore.
+function safeSendMessage(message: unknown, callback?: (response: any) => void): void {
+  try {
+    if (callback) chrome.runtime.sendMessage(message, callback);
+    else chrome.runtime.sendMessage(message);
+  } catch {
+    // Orphaned — nothing left to do; the caller's own chain (armDueTimer, the
+    // TAKE_BREAK response handling, …) simply never resumes, same as it would if
+    // lastError had fired instead.
+  }
+}
 
 async function getLang(): Promise<Lang> {
   const { language } = await chrome.storage.sync.get({ language: 'en' as Lang }) as { language: Lang };
@@ -445,15 +225,26 @@ async function getSkin(): Promise<Skin> {
   return skin;
 }
 
-async function getUnlockedSkins(): Promise<Skin[]> {
-  const { streak } = await chrome.storage.local.get('streak') as { streak?: { unlockedSkins?: Skin[] } };
-  return streak?.unlockedSkins ?? [];
-}
-
-// The selection syncs across devices but unlocks are earned per device, so a synced
-// skin this device hasn't unlocked renders as the plain ghost instead.
-function allowedSkin(selected: Skin, unlocked: Skin[]): Skin {
-  return selected === 'none' || unlocked.includes(selected) ? selected : 'none';
+// Stored unlocks UNIONED with what the counters already qualify for — the stored list
+// alone lags until the next completed break (see effectiveUnlocked).
+// Both keys decide what the ghost wears: `streak` holds the permanent unlocks, and
+// `counters` holds today's mood. Read together so neither can be stale.
+async function getSkinState(): Promise<{ unlocked: Skin[]; counters: Counters }> {
+  const { streak, counters } = await chrome.storage.local.get(['streak', 'counters']) as
+    { streak?: Partial<{ unlockedSkins: Skin[]; currentStreak: number }>; counters?: Partial<Counters> };
+  const now = new Date();
+  // rollCounters settles an expired focus period itself (whether or not the day is
+  // also turning over) — pre-settling here would let a cross-midnight roll discard
+  // whatever got folded into the wrong (old) day's total; see its own comment.
+  const rolled = rollCounters(normalizeCounters(counters), localDateStr(now), now.getTime());
+  return {
+    unlocked: effectiveUnlocked(
+      Array.isArray(streak?.unlockedSkins) ? streak.unlockedSkins : [],
+      Number(streak?.currentStreak) || 0,
+      rolled
+    ),
+    counters: rolled
+  };
 }
 
 async function boot(): Promise<void> {
@@ -475,22 +266,22 @@ async function boot(): Promise<void> {
 
   let lang: Lang = await getLang();
   let selectedSkin: Skin = await getSkin();
-  let unlockedSkins: Skin[] = await getUnlockedSkins();
-  const skin: Skin = allowedSkin(selectedSkin, unlockedSkins);
+  let { unlocked: unlockedSkins, counters: skinCounters } = await getSkinState();
+  const skin: Skin = displayedSkin(selectedSkin, unlockedSkins, skinCounters, new Date());
 
   const host = document.createElement('div');
   host.id = 'pak-a-boo-host';
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.innerHTML = `
     <style>${STYLE}</style>
-    <div class="root" data-stage="hidden" data-skin="${skin}">
+    <div class="root" data-stage="hidden">
       <div class="mascot" role="button" tabindex="0">
         <div class="bubble mascot-bubble"></div>
-        <div class="mascot-pose">${GHOST_SVG}</div>
+        <div class="mascot-pose" data-skin="${skin}">${GHOST_SVG}</div>
       </div>
       <div class="flopper" role="button" tabindex="0">
         <div class="bubble flop-bubble"></div>
-        <div class="flop-walk"><div class="pose-flop">${GHOST_SVG}</div></div>
+        <div class="flop-walk"><div class="pose-flop" data-skin="${skin}">${GHOST_SVG}</div></div>
       </div>
       <div class="session">
         <div class="session-head">
@@ -514,9 +305,10 @@ async function boot(): Promise<void> {
           </div>
         </div>
         <div class="session-done-body">
-          <div class="done-ghost"><div class="pose-happy">${GHOST_SVG}</div></div>
+          <div class="done-ghost"><div class="pose-happy" data-skin="${skin}">${GHOST_SVG}</div></div>
           <div>
             <div class="done-th"></div>
+            <div class="done-new"></div>
             <div class="done-sub"></div>
             <button class="btn-done" type="button"></button>
           </div>
@@ -540,10 +332,49 @@ async function boot(): Promise<void> {
   const stepCue = shadow.querySelector('.step-cue') as HTMLElement;
   const dotsEl = shadow.querySelector('.dots') as HTMLElement;
   const doneSub = shadow.querySelector('.done-sub') as HTMLElement;
+  const doneNew = shadow.querySelector('.done-new') as HTMLElement;
   const skipBtn = shadow.querySelector('.btn-skip') as HTMLElement;
   const nextBtn = shadow.querySelector('.btn-next') as HTMLElement;
   const doneHeading = shadow.querySelector('.done-th') as HTMLElement;
   const doneBtn = shadow.querySelector('.btn-done') as HTMLElement;
+
+  const flopPose = shadow.querySelector('.flop-walk > .pose-flop') as HTMLElement;
+  const doneGhost = shadow.querySelector('.done-ghost > .pose-happy') as HTMLElement;
+
+  // What Mr.Boo is wearing right now. Applied per ghost rather than once on .root:
+  // the skin CSS matches on the nearest [data-skin] ancestor, so a single attribute up
+  // top would leak the mascot's accessory onto a done card celebrating a different one.
+  let currentSkin: Skin = skin;
+  // True while the done card is showing a just-earned skin (see endSession). While
+  // true, applySkin leaves doneGhost alone: every refreshSkin call in that ~8s window
+  // (a storage event the completion's OWN write triggers, the 60s backstop timer,
+  // visibilitychange) would otherwise recompute the ghost's ORDINARY current look —
+  // which for a just-unlocked COLLECTABLE is never what's being celebrated, since
+  // collectables aren't auto-worn — and stomp the reveal while its caption still
+  // claims it. hideSession is the only place that clears this.
+  let celebrating = false;
+  function applySkin(next: Skin): void {
+    currentSkin = next;
+    mascotPose.dataset.skin = next;
+    flopPose.dataset.skin = next;
+    if (!celebrating) doneGhost.dataset.skin = next;
+    if (stageEl.firstElementChild) (stageEl.firstElementChild as HTMLElement).dataset.skin = next;
+  }
+  // Re-rolls the in-memory counters against the current instant before recomputing the
+  // look. Without this, a tab left open across local midnight (or one where Zen's
+  // 90-minute threshold is crossed purely by a focus session continuing to run, with no
+  // storage write to notice) keeps showing whatever mood/date it booted with until some
+  // UNRELATED storage change happens to refresh it — which might be hours later, or
+  // never for an idle tab. Called on a periodic timer below and right before a peek is
+  // shown, so the ghost the user actually sees is never stale by more than a minute.
+  function refreshSkin(): void {
+    const now = new Date();
+    // rollCounters settles an expired focus period itself (whether or not the day is
+    // also turning over) — pre-settling here would let a cross-midnight roll discard
+    // whatever got folded into the wrong (old) day's total; see its own comment.
+    skinCounters = rollCounters(skinCounters, localDateStr(now), now.getTime());
+    applySkin(displayedSkin(selectedSkin, unlockedSkins, skinCounters, now));
+  }
 
   const RING_C = 2 * Math.PI * 26;
   ringFg.style.strokeDasharray = String(RING_C);
@@ -608,12 +439,21 @@ async function boot(): Promise<void> {
 
   function showPeek(kind: BreakKind): void {
     if (sessionActive || root.dataset.stage !== 'hidden') return;
+    // The moment the ghost is actually about to be SEEN is the one that matters most —
+    // re-resolve the look right now rather than trusting whatever it last happened to
+    // be, so a tab that's been open and idle (no storage event to notice a midnight
+    // rollover or a passing Zen threshold) still shows an up-to-date mood.
+    refreshSkin();
     pendingKind = kind;
     setStage('peek');
     escalateT1 = setTimeout(showSit, STAGE1_MS);
   }
 
   function showSit(): void {
+    // A setTimeout callback already queued by the event loop can't be cancelled by a
+    // clearTimeout() that runs after it's dequeued — if the ghost was dismissed
+    // (retreat()) in that narrow window, this must not resurrect it into 'sit'.
+    if (root.dataset.stage !== 'peek') return;
     setStage('sit');
     renderSitBubble();
     // requestAnimationFrame never fires while the tab is backgrounded — if the stage
@@ -626,6 +466,9 @@ async function boot(): Promise<void> {
   }
 
   function showFlop(): void {
+    // Same reasoning as showSit()'s guard — a queued callback outliving a dismissal
+    // must not resurrect the ghost into 'flop'.
+    if (root.dataset.stage !== 'sit') return;
     setStage('flop');
     renderFlopBubble();
     setTimeout(() => { if (root.dataset.stage === 'flop') flopBubble.classList.add('on'); }, 2700);
@@ -641,7 +484,7 @@ async function boot(): Promise<void> {
     // The response carries the new nextBreakAt so the precise timer can be re-armed —
     // without it the snoozed break comes back on the (possibly very late) alarm alone,
     // which is exactly the lag armDueTimer exists to hide.
-    chrome.runtime.sendMessage({ type: 'SNOOZE' }, (response) => {
+    safeSendMessage({ type: 'SNOOZE' }, (response) => {
       if (chrome.runtime.lastError) return;
       armDueTimer(response?.nextBreakAt);
     });
@@ -668,7 +511,7 @@ async function boot(): Promise<void> {
   let stepIndex = 0;
 
   function renderPose(pose: string): void {
-    stageEl.innerHTML = `<div class="pose-${pose}">${GHOST_SVG}</div>`;
+    stageEl.innerHTML = `<div class="pose-${pose}" data-skin="${currentSkin}">${GHOST_SVG}</div>`;
   }
 
   function renderDots(): void {
@@ -711,6 +554,14 @@ async function boot(): Promise<void> {
   function startSession(kind: BreakKind): void {
     clearEscalation();
     if (doneT) clearTimeout(doneT);
+    // A new session cuts short whatever the PREVIOUS done card was showing — the same
+    // moment hideSession() normally handles. If a celebration was up, this has to drop
+    // it exactly like hideSession() would, or `celebrating` stays stuck true forever:
+    // applySkin() then refuses to ever touch doneGhost again for the rest of the tab's
+    // life, freezing every future done card on whatever skin was last celebrated.
+    doneNew.textContent = '';
+    celebrating = false;
+    doneGhost.dataset.skin = currentSkin;
     setStage('hidden');
     sessionActive = true;
     currentSessionKind = kind;
@@ -723,21 +574,32 @@ async function boot(): Promise<void> {
     // The break is being handled here — tell other tabs to stop escalating their own
     // copy of it now, not just once this session finishes minutes from now. Without
     // this, the same break could get completed a second time from another tab.
-    chrome.runtime.sendMessage({ type: 'SESSION_STARTED' });
+    safeSendMessage({ type: 'SESSION_STARTED' });
   }
 
   function hideSession(): void {
     if (doneT) clearTimeout(doneT);
     session.classList.remove('on', 'done');
+    doneNew.textContent = '';
+    celebrating = false;
+    doneGhost.dataset.skin = currentSkin; // drop the celebration override
   }
 
   function endSession(completed: boolean): void {
+    // Reentrancy guard: without it, a step timer tick and a "Next"/"Skip" click landing
+    // in the same instant (or a double click once stepIndex is already past the last
+    // step) each independently reach this function and would each send their own
+    // TAKE_BREAK — double-counting breaksToday/mood counters and advancing the cycle
+    // an extra step. sessionActive is exactly "is there a session left to end", so
+    // checking it here (before this call sets it false) makes every call after the
+    // first a no-op.
+    if (!sessionActive) return;
     if (stepTimer) clearInterval(stepTimer);
     sessionActive = false;
     // completed distinguishes "actually did the break" from "skipped/closed it" —
     // the schedule advances either way (so it doesn't nag again in 10 min), but only
     // a real completion should count toward the breaksToday stat.
-    chrome.runtime.sendMessage({ type: 'TAKE_BREAK', completed }, (response) => {
+    safeSendMessage({ type: 'TAKE_BREAK', completed }, (response) => {
       if (chrome.runtime.lastError) return;
       // Re-armed before the !completed bail: a SKIPPED break reschedules too, and
       // letting the timer chain end here would put the next ghost back at the mercy
@@ -745,6 +607,21 @@ async function boot(): Promise<void> {
       armDueTimer(response?.nextBreakAt);
       if (!completed) return;
       const c = COPY[lang];
+      // A just-earned skin is worn by the done-card ghost immediately, ahead of
+      // whatever's selected — this is the reveal, and for behaviour/event looks it is
+      // the ONLY reveal, since they never appear as a button. The background queues
+      // at most one per completion (see TAKE_BREAK), so there's never more than one
+      // to show here — any backlog drains one completed break at a time.
+      const unlockedNow = Array.isArray(response?.unlocked) ? (response.unlocked as Skin[]) : [];
+      const fresh = unlockedNow[0];
+      if (fresh) {
+        unlockedSkins = [...unlockedSkins, ...unlockedNow];
+        celebrating = true;
+        doneGhost.dataset.skin = fresh;
+        doneNew.textContent = c.newLook(skinDef(fresh)?.label[lang] ?? fresh);
+      } else {
+        doneNew.textContent = '';
+      }
       const parts: string[] = [];
       if (typeof response?.breaksToday === 'number') parts.push(c.breaksToday(response.breaksToday));
       if (typeof response?.nextBreakAt === 'number') {
@@ -813,10 +690,12 @@ async function boot(): Promise<void> {
   chrome.storage.onChanged.addListener((changes, area) => {
     // Unlocks live in storage.local; re-gate when they change so a milestone earned
     // while this tab is open puts the (already-selected) accessory on immediately.
-    if (area === 'local' && changes.streak) {
-      const next = changes.streak.newValue as { unlockedSkins?: Skin[] } | undefined;
-      unlockedSkins = next?.unlockedSkins ?? [];
-      root.dataset.skin = allowedSkin(selectedSkin, unlockedSkins);
+    // Either key can change what's unlocked, so re-derive from storage rather than
+    // reading the changed value alone.
+    if (area === 'local' && (changes.streak || changes.counters)) {
+      void getSkinState().then((next) => {
+        unlockedSkins = next.unlocked; skinCounters = next.counters; refreshSkin();
+      });
       return;
     }
     if (area !== 'sync') return;
@@ -837,7 +716,7 @@ async function boot(): Promise<void> {
       // A removed key (sync cleared) falls back to 'none' rather than being ignored,
       // so open tabs don't keep wearing a deselected accessory until reload.
       selectedSkin = (changes.skin.newValue as Skin | undefined) ?? 'none';
-      root.dataset.skin = allowedSkin(selectedSkin, unlockedSkins);
+      refreshSkin();
     }
   });
 
@@ -869,7 +748,7 @@ async function boot(): Promise<void> {
   }
   function askIfDue(): void {
     if (document.visibilityState !== 'visible') return;
-    chrome.runtime.sendMessage({ type: 'CONTENT_READY' }, (response) => {
+    safeSendMessage({ type: 'CONTENT_READY' }, (response) => {
       if (chrome.runtime.lastError) return; // extension reloaded — this script is orphaned
       if (response?.breakDue) { showPeek(response.breakKind === 'big' ? 'big' : 'micro'); return; }
       armDueTimer(response?.nextBreakAt);
@@ -878,10 +757,17 @@ async function boot(): Promise<void> {
   // Becoming visible asks straight away — that covers a break that came due while this
   // tab was in the background, without the tab having polled for it.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') askIfDue();
+    if (document.visibilityState === 'visible') { askIfDue(); refreshSkin(); }
     else if (dueT) { clearTimeout(dueT); dueT = undefined; }
   });
   askIfDue();
+
+  // A low-frequency backstop for the look itself, independent of any break event: the
+  // mascot on a tab that's simply sitting open should still cross local midnight and
+  // pick up a passively-reached Zen without waiting for the next peek or an unrelated
+  // storage write. One minute is frequent enough that nobody could notice the lag, and
+  // infrequent enough that it costs nothing on a page left open all day.
+  setInterval(() => { if (document.visibilityState === 'visible') refreshSkin(); }, 60_000);
 }
 
 void boot();

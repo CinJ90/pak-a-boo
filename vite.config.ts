@@ -11,8 +11,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(root, 'src/popup/index.html'),
-        background: resolve(root, 'src/background.ts'),
-        content: resolve(root, 'src/content.ts')
+        background: resolve(root, 'src/background.ts')
+        // content.ts is built by vite.content.config.ts — see the note there.
       },
       output: {
         entryFileNames: '[name].js',

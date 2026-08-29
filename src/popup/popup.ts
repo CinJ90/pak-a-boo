@@ -1,5 +1,6 @@
 import '../popup/style.css';
-import { DEFAULT_SETTINGS, SKIN_MILESTONES, isStreakAlive, localDateStr, normalizeStreak, type SchedulerState, type Settings, type Skin, type StreakState } from '../types';
+import { DEFAULT_SETTINGS, isStreakAlive, localDateStr, normalizeStreak, type SchedulerState, type Settings, type Skin, type StreakState } from '../types';
+import { COLLECTABLE, STREAK_MILESTONES, effectiveUnlocked, normalizeCounters, resolveDefaultLook, rollCounters, skinDef, type Counters } from '../skins';
 
 type Lang = Settings['language'];
 
@@ -25,6 +26,7 @@ const COPY = {
       return 'day streak';
     },
     skinLocked: (n: number) => `Unlock at ${n}-day streak`,
+    mystery: 'A secret look — keep resting to find it',
     streakHelp: 'How the streak works',
     streakHelpText: 'Counts days you actually worked. Days you’re away (weekends, holidays) don’t break it — only a working day with no breaks does.'
   },
@@ -49,6 +51,7 @@ const COPY = {
       return 'วันติดต่อกัน';
     },
     skinLocked: (n: number) => `ปลดล็อกที่สตรีค ${n} วัน`,
+    mystery: 'สกินลับ ~ พักไปเรื่อย ๆ แล้วจะเจอ',
     streakHelp: 'สตรีคนับอย่างไร',
     streakHelpText: 'นับเฉพาะวันที่คุณทำงานจริง วันที่ไม่ได้ใช้งาน (เสาร์-อาทิตย์ วันหยุด) ไม่ทำให้สตรีคขาด — ขาดเฉพาะเมื่อทำงานทั้งวันแต่ไม่ได้พักเลย'
   }
@@ -70,17 +73,69 @@ const streakCount = document.querySelector('#streak-count') as HTMLElement;
 const streakCaption = document.querySelector('#streak-caption') as HTMLElement;
 const streakDots = document.querySelectorAll<HTMLElement>('.streak-dot');
 const streakHelp = document.querySelector('#streak-help') as HTMLButtonElement;
-const skinButtons = document.querySelectorAll<HTMLButtonElement>('.skin-btn');
 
-// Ascending [skin, threshold] pairs (currently 2/5/7 for sprout/phones/crown) — derived
-// from SKIN_MILESTONES rather than hardcoded again, so the streak-progress dots and the
-// "days to next skin" hint can't drift out of sync with the actual unlock logic in
-// background.ts.
-const MILESTONES = (Object.entries(SKIN_MILESTONES) as [Skin, number][]).sort((a, b) => a[1] - b[1]);
-const MILESTONE_THRESHOLDS = MILESTONES.map(([, threshold]) => threshold);
+// Ascending [skin, days] pairs (2/5/7 for sprout/phones/crown), derived from the
+// registry rather than restated here, so the progress dots and the "days to next skin"
+// hint can't drift from the unlock logic. Only STREAK unlocks belong on the dots — the
+// legendary slot is counter-based and would otherwise miscount them.
+const MILESTONES = [...STREAK_MILESTONES].sort((a, b) => a[1] - b[1]);
+const MILESTONE_THRESHOLDS = MILESTONES.map(([, days]) => days);
+
+const skinRow = document.querySelector('.skin-row') as HTMLElement;
+
+// Flat accessory glyph, not the whole ghost — the buttons are ~19px and the accessory
+// alone reads better at that size (and keeps the popup bundle small).
+function icon(skin: Skin): string {
+  const glyph = skinDef(skin)?.icon ?? '';
+  return `<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">${glyph}</svg>`;
+}
+
+// Five slots, always. Slot 1 is Mr.Boo wearing whatever today resolved to (an event
+// costume in season, else the most recent behaviour look); slots 2-4 are the streak
+// ladder; slot 5 is the legendary, shown as "?" until earned so its existence is
+// visible but its identity isn't.
+//
+// refresh() runs every second, so this must NOT unconditionally replace the row's
+// innerHTML — a full replace destroys whatever DOM node currently has keyboard focus,
+// which meant tabbing onto a skin button and it losing focus within a second, making
+// the row impossible to operate by keyboard at all. Build the HTML and only touch the
+// DOM when it actually differs from what's already there.
+let lastSkinRowHtml = '';
+function renderSkinRow(lang: Lang, selected: Skin, unlocked: readonly Skin[], counters: Counters, now: Date): void {
+  const c = COPY[lang];
+  // Slot 1 is a live readout of today, not a stored selection — an event costume in
+  // season, else the mood today's breaks have put Mr.Boo in, else the plain sheet.
+  const defaultLook = resolveDefaultLook(counters, now);
+  const cells = [
+    { id: 'none' as Skin, look: defaultLook, unlockedHere: true, title: skinDef(defaultLook)?.label[lang] ?? '' },
+    ...COLLECTABLE.map((def) => {
+      const has = unlocked.includes(def.id);
+      const streakDays = MILESTONES.find(([id]) => id === def.id)?.[1];
+      return {
+        id: def.id,
+        look: has ? def.id : def.kind === 'legendary' ? null : def.id,
+        unlockedHere: has,
+        title: has
+          ? def.label[lang]
+          : def.kind === 'legendary'
+            ? (def.hint?.[lang] ?? c.mystery)
+            : streakDays !== undefined ? c.skinLocked(streakDays) : ''
+      };
+    })
+  ];
+  const html = cells.map((cell) => {
+    const active = cell.id === selected;
+    const body = cell.look === null ? '<span class="skin-mystery">?</span>' : icon(cell.look);
+    return `<button type="button" class="skin-btn${active ? ' active' : ''}" data-skin="${cell.id}"` +
+      `${cell.unlockedHere ? '' : ' disabled'} aria-pressed="${active}" title="${cell.title}" aria-label="${cell.title}">${body}</button>`;
+  }).join('');
+  if (html === lastSkinRowHtml) return;
+  lastSkinRowHtml = html;
+  skinRow.innerHTML = html;
+}
 
 async function refresh(): Promise<void> {
-  const { scheduler, sessionInProgressUntil, streak: rawStreak } = await chrome.storage.local.get(['scheduler', 'sessionInProgressUntil', 'streak']) as { scheduler?: SchedulerState; sessionInProgressUntil?: number; streak?: Partial<StreakState> };
+  const { scheduler, sessionInProgressUntil, streak: rawStreak, counters: rawCounters } = await chrome.storage.local.get(['scheduler', 'sessionInProgressUntil', 'streak', 'counters']) as { scheduler?: SchedulerState; sessionInProgressUntil?: number; streak?: Partial<StreakState>; counters?: Partial<Counters> };
   const settings = { ...DEFAULT_SETTINGS, ...(await chrome.storage.sync.get(DEFAULT_SETTINGS)) } as Settings;
   const lang: Lang = settings.language;
   const c = COPY[lang];
@@ -117,7 +172,15 @@ async function refresh(): Promise<void> {
   // yesterday's count until breaksTodayDate says otherwise.
   const todaysBreaks = scheduler && scheduler.breaksTodayDate === localDateStr(now) ? scheduler.breaksToday : 0;
   streakCount.textContent = String(currentStreak);
-  const unlocked = streak.unlockedSkins;
+  // Rolled at read time so the mood clears at local midnight even if the popup has
+  // been sitting open (it re-renders once a second) and no background write has landed.
+  // rollCounters settles an expired focus period itself (whether or not the day is
+  // also turning over) — pre-settling here would let a cross-midnight roll discard
+  // whatever got folded into the wrong (old) day's total; see its own comment.
+  const counters = rollCounters(normalizeCounters(rawCounters), localDateStr(now), now.getTime());
+  // Stored unlocks UNIONED with whatever the counters already qualify for — see
+  // effectiveUnlocked for why the stored list alone isn't enough.
+  const unlocked = effectiveUnlocked(streak.unlockedSkins, streak.currentStreak, counters);
   // One dot per unlock milestone: filled once reached, pulsing on whichever is next
   // (the anticipation cue), plain otherwise.
   const nextIndex = MILESTONE_THRESHOLDS.findIndex((threshold) => currentStreak < threshold);
@@ -133,18 +196,12 @@ async function refresh(): Promise<void> {
     dot.classList.toggle('reached', currentStreak >= MILESTONE_THRESHOLDS[i]);
     dot.classList.toggle('current', i === nextIndex);
   });
-  // The selection syncs across devices but unlocks are device-local, so a synced
-  // skin this device hasn't earned falls back to showing 'none' as active — same
-  // rule the content script applies when rendering the ghost.
+  // The selection syncs across devices but unlocks are device-local, so a synced skin
+  // this device hasn't earned shows the default slot as active instead — the same rule
+  // the content script applies when rendering the ghost.
   const effectiveSkin: Skin =
-    settings.skin === 'none' || unlocked.includes(settings.skin) ? settings.skin : 'none';
-  skinButtons.forEach((btn) => {
-    const id = btn.dataset.skin as Skin;
-    const isUnlocked = id === 'none' || unlocked.includes(id);
-    btn.disabled = !isUnlocked;
-    btn.title = isUnlocked ? '' : c.skinLocked(SKIN_MILESTONES[id as Exclude<Skin, 'none'>]);
-    btn.classList.toggle('active', id === effectiveSkin);
-  });
+    settings.skin !== 'none' && unlocked.includes(settings.skin) ? settings.skin : 'none';
+  renderSkinRow(lang, effectiveSkin, unlocked, counters, now);
 
   const focusActive = Boolean(settings.focusUntil && settings.focusUntil > Date.now());
   focusBtn.textContent = focusActive ? c.focusOff : c.focusOn;
@@ -208,12 +265,11 @@ langButtons.forEach((btn) => {
     await refresh();
   });
 });
-skinButtons.forEach((btn) => {
-  btn.addEventListener('click', async () => {
-    if (btn.disabled) return;
-    await chrome.storage.sync.set({ skin: btn.dataset.skin as Skin });
-    await refresh();
-  });
+skinRow.addEventListener('click', async (e) => {
+  const btn = (e.target as HTMLElement).closest('.skin-btn') as HTMLButtonElement | null;
+  if (!btn || btn.disabled) return;
+  await chrome.storage.sync.set({ skin: btn.dataset.skin as Skin });
+  await refresh();
 });
 
 void refresh();
