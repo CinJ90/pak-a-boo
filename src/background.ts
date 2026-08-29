@@ -1,10 +1,17 @@
-import { DEFAULT_SETTINGS, DEFAULT_STREAK, SKIN_MILESTONES, isYesterday, localDateStr, type SchedulerState, type Settings, type Skin, type StreakState } from './types';
+import { DEFAULT_SETTINGS, SKIN_MILESTONES, localDateStr, normalizeStreak, rollActiveDay, type BreakKind, type SchedulerState, type Settings, type Skin, type StreakState } from './types';
 
 const ALARM_NAME = 'pak-a-boo-next-break';
 // chrome.idle only tracks physical mouse/keyboard input — it can't tell "genuinely away"
 // apart from "sitting still watching the countdown," which looks identical to it. Never
 // treat idle as "away" for less than this floor, however short the break interval is.
 const MIN_AWAY_MS = 15 * 60_000;
+// For streak purposes a peek only makes the day "active" if someone is demonstrably at
+// the machine: system input within this many seconds. Otherwise Chrome left running on
+// an empty desk over a weekend would mark Saturday active, and the streak would die for
+// exactly the days-off the active-day rule exists to forgive. Kept short so input from
+// just before midnight can't make the NEXT day look active either. Any click on the
+// ghost (snooze / skip / take) marks the day regardless — that's presence by definition.
+const PRESENCE_WINDOW_S = 60;
 
 const NOTIFY_COPY = {
   en: {
@@ -32,6 +39,7 @@ function isPaused(settings: Settings): boolean {
 }
 
 async function scheduleNext(from = Date.now(), cycleStep = 0, breaksToday = 0): Promise<void> {
+  assertInTransaction('scheduleNext');
   const settings = await getSettings();
   const breakKind = cycleStep === 2 ? 'big' : 'micro';
   const intervalMinutes = breakKind === 'big' ? settings.bigMinutes : settings.microMinutes;
@@ -43,7 +51,8 @@ async function scheduleNext(from = Date.now(), cycleStep = 0, breaksToday = 0): 
     breaksToday,
     breaksTodayDate: localDateStr(new Date(from)),
     lastBreakAt: null,
-    scheduledMinutes: intervalMinutes
+    scheduledMinutes: intervalMinutes,
+    breakDueDate: null
   };
   await chrome.storage.local.set({ scheduler: state });
   await chrome.alarms.clear(ALARM_NAME);
@@ -61,27 +70,158 @@ function effectiveBreaksToday(scheduler: SchedulerState | undefined, from: numbe
   return scheduler.breaksToday;
 }
 
-// Called only when a break is genuinely completed. Lives in its own storage key
-// rather than SchedulerState, which scheduleNext() fully replaces from 8 different
-// call sites — folding streak fields in there would mean threading them through
-// every one of those just to avoid clobbering them on the next unrelated reschedule.
-// `today` is captured when the completion message arrives, not when this runs, so a
-// write delayed past local midnight still counts toward the day the break happened.
-let streakWrite: Promise<void> = Promise.resolve();
+// ── Serialized state writes ─────────────────────────────────────────────────────
+// Every read-modify-write of the `scheduler` or `streak` key runs inside one
+// transaction chain. chrome.storage has no compare-and-swap, so without this any
+// handler that reads the scheduler, awaits something (settings, an idle query, a
+// storage round-trip), then writes it back will silently clobber a reschedule that
+// landed in between — resurrecting a break the user already took, along with its
+// stale cycle position and break count. Serializing IS the fix: each handler starts
+// from the state the previous one finished writing.
+//
+// The two keys share one chain rather than having one each: TAKE_BREAK has to update
+// both atomically, and two chains would need one to await the other (a deadlock waiting
+// to happen). There is no throughput to lose here — these are sub-second, user-paced
+// events.
+//
+// RULE: enqueue at the TOP of an event handler only. Anything reachable from inside a
+// transaction (scheduleNext, prepareShownBreak, recordCompletion, markActiveDay, …)
+// must never enqueue — it would wait forever on the chain it is already running in.
+// assertInTransaction() surfaces that mistake in the service-worker console.
+let stateWrite: Promise<void> = Promise.resolve();
+let inTransaction = false;
 
-async function recordCompletion(today: Date): Promise<void> {
-  const { streak } = await chrome.storage.local.get({ streak: DEFAULT_STREAK }) as { streak: StreakState };
-  const todayStr = localDateStr(today);
-  if (streak.lastCompletedDate === todayStr) return; // already counted today
-  const currentStreak = isYesterday(streak.lastCompletedDate, today) ? streak.currentStreak + 1 : 1;
+function enqueueWrite(label: string, work: () => Promise<unknown>): Promise<void> {
+  return (stateWrite = stateWrite.then(async () => {
+    inTransaction = true;
+    try {
+      await work();
+    } catch (e) {
+      // Swallowed, not rethrown: one failed transaction must not break the chain for
+      // every write queued behind it.
+      console.error(`Pak-a-boo: ${label} failed`, e);
+    } finally {
+      inTransaction = false;
+    }
+  }));
+}
+
+function assertInTransaction(fn: string): void {
+  if (!inTransaction) console.error(`Pak-a-boo: ${fn}() ran outside a state transaction — see enqueueWrite`);
+}
+
+// `accountingDate` is the date of the event being applied (captured at arrival), so
+// the v1.0.0 migration inside normalizeStreak judges recency against the right day
+// even if this queued read runs after midnight.
+async function readStreak(accountingDate: string): Promise<StreakState> {
+  const { streak } = await chrome.storage.local.get('streak') as { streak?: Partial<StreakState> };
+  return normalizeStreak(streak, accountingDate);
+}
+
+// Is someone demonstrably at the machine right now? System input within
+// PRESENCE_WINDOW_S — but never input from before local midnight: in the first minute
+// of a new day the window shrinks to the seconds elapsed since 00:00, so last night's
+// typing can't vouch for today. (queryState's minimum interval is 15 s, so the first
+// 15 s of a day can't auto-mark at all — clicks still can.)
+async function userPresent(now: Date): Promise<boolean> {
+  const sinceMidnightS = Math.floor((now.getTime() - new Date(now).setHours(0, 0, 0, 0)) / 1000);
+  const window = Math.min(PRESENCE_WINDOW_S, sinceMidnightS);
+  if (window < 15) return false;
+  return (await chrome.idle.queryState(window)) === 'active';
+}
+
+// Called by every path that is about to show a break (alarm, tab activation, page
+// load) with the CURRENT scheduler, read inside the same transaction. Two jobs:
+//  1. Pin the break to today (breakDueDate) if this is its first showing.
+//  2. If a PRESENT user is getting their first peek of a new active day, restart the
+//     rest cycle: every day opens micro → micro → big, regardless of where yesterday
+//     (or an unattended weekend of alarms cycling on an empty desk) left off. Presence
+//     is what distinguishes "first peek of the day" from "alarm #37 to nobody".
+// Marking the day active is left to the caller, which knows whether the ghost was
+// really shown (notifyBreak has pause re-checks after this; deliverIfDue only finds
+// out in its send callback).
+interface ShownBreak { scheduler: SchedulerState; dueDate: string; present: boolean }
+
+async function prepareShownBreak(current: SchedulerState): Promise<ShownBreak> {
+  assertInTransaction('prepareShownBreak');
+  const now = new Date();
+  const dueDate = current.breakDueDate ?? localDateStr(now);
+  let next: SchedulerState = current.breakDueDate ? current : { ...current, breakDueDate: dueDate };
+  const present = await userPresent(now);
+  if (present && next.cycleStep !== 0) {
+    const streak = await readStreak(dueDate);
+    const firstPeekOfNewDay = rollActiveDay(streak, dueDate) !== streak;
+    if (firstPeekOfNewDay) next = { ...next, cycleStep: 0, breakKind: 'micro' };
+  }
+  if (next !== current) await chrome.storage.local.set({ scheduler: next });
+  return { scheduler: next, dueDate, present };
+}
+
+// The date a break belongs to for streak accounting: the day it was first shown, or —
+// for a break delivered by deliverIfDue/CONTENT_READY before notifyBreak ever ran for
+// it — the day of the interaction itself. Callers must read the scheduler BEFORE
+// rescheduling, since scheduleNext() resets breakDueDate.
+function breakDate(scheduler: SchedulerState | undefined, fallback: Date): string {
+  return scheduler?.breakDueDate ?? localDateStr(fallback);
+}
+
+// Makes `activeDate` count as an active day. Idempotent — persists only when the day
+// actually rolls, so repeated nags/clicks within a day write nothing.
+// Returns whether this call is what OPENED the day (rolled it), which is also the
+// signal to restart the rest cycle — see the callers. Only the first mark of a day
+// returns true.
+async function markActiveDay(activeDate: string): Promise<boolean> {
+  assertInTransaction('markActiveDay');
+  const streak = await readStreak(activeDate);
+  const rolled = rollActiveDay(streak, activeDate);
+  if (rolled === streak) return false;
+  await chrome.storage.local.set({ streak: rolled });
+  return true;
+}
+
+// Idle forgiveness: the user walked away for at least a full break interval after
+// the ghost peeked. If that break's day was already marked active (they were present
+// when it peeked), the absence IS the rest — credit it, or an otherwise-honest day
+// could later kill the streak. If the day was never marked (ghost peeked at an empty
+// desk), do nothing: crediting that would hand out free streak days over weekends.
+async function creditForgivenBreak(shownDate: string): Promise<void> {
+  const streak = await readStreak(shownDate);
+  if (streak.lastActiveDate !== shownDate) return;
+  await recordCompletion(shownDate); // the day is already open; nothing to reset
+}
+
+// Called only when a break is genuinely completed, credited to the break's own date
+// (see breakDate). Rolls the active day itself too: a break can be delivered and
+// completed before the alarm's own notifyBreak() has marked anything.
+// Returns whether it opened the day, same as markActiveDay.
+async function recordCompletion(completedDate: string): Promise<boolean> {
+  assertInTransaction('recordCompletion');
+  const before = await readStreak(completedDate);
+  // A completion dated BEFORE the newest active day means the clock moved backward:
+  // westward travel (the local date repeats) or a fast clock being corrected. Credit
+  // it to that day instead of dropping it — dropping would leave the streak unable to
+  // advance, or even to restart from 1, until real time caught back up. The
+  // already-counted guard below still prevents a double count.
+  const date = before.lastActiveDate !== null && completedDate < before.lastActiveDate
+    ? before.lastActiveDate
+    : completedDate;
+  const streak = rollActiveDay(before, date);
+  const openedDay = streak !== before;
+  if (streak.lastCompletedDate === date) {
+    if (openedDay) await chrome.storage.local.set({ streak }); // persist the roll only
+    return openedDay; // already counted
+  }
+  const currentStreak = streak.currentStreak + 1; // rollActiveDay already zeroed a dead streak
   const unlockedSkins = [...streak.unlockedSkins];
   for (const [skin, threshold] of Object.entries(SKIN_MILESTONES) as [Skin, number][]) {
     if (currentStreak >= threshold && !unlockedSkins.includes(skin)) unlockedSkins.push(skin);
   }
-  await chrome.storage.local.set({ streak: { currentStreak, lastCompletedDate: todayStr, unlockedSkins } });
+  await chrome.storage.local.set({ streak: { ...streak, currentStreak, lastCompletedDate: date, unlockedSkins } });
+  return openedDay;
 }
 
 async function notifyBreak(): Promise<void> {
+  assertInTransaction('notifyBreak');
   const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
   const settings = await getSettings();
   if (!scheduler) {
@@ -123,9 +263,12 @@ async function notifyBreak(): Promise<void> {
     return;
   }
 
-  const isBigBreak = scheduler.breakKind === 'big';
+  // Pins the date on the first nag (re-nags, even past midnight, keep it) and may
+  // restart the cycle for a new day.
+  const { scheduler: current, dueDate, present } = await prepareShownBreak(scheduler);
+  const isBigBreak = current.breakKind === 'big';
   await chrome.storage.local.set({
-    scheduler: { ...scheduler, snoozes: scheduler.snoozes + 1, lastBreakAt: Date.now() }
+    scheduler: { ...current, snoozes: current.snoozes + 1, lastBreakAt: Date.now() }
   });
   // Arm the re-nag alarm FIRST — if notifications.create or the broadcast throws below,
   // the cycle must not get permanently stuck with no future alarm to wake it back up.
@@ -149,7 +292,12 @@ async function notifyBreak(): Promise<void> {
   // read at the top of this function — closes the narrow window where focus/off gets
   // turned on while this call is in flight.
   if (isPaused(await getSettings())) return;
-  await broadcast({ type: 'BREAK_DUE', breakKind: scheduler.breakKind });
+  // The ghost is about to peek. That makes the break's day active for the streak —
+  // but only if someone was actually here to see it (prepareShownBreak's presence
+  // check); an alarm firing on an idle/locked machine must not count. Called directly,
+  // not enqueued: this already IS the transaction.
+  if (present) await markActiveDay(dueDate);
+  await broadcast({ type: 'BREAK_DUE', breakKind: current.breakKind });
 }
 
 // Sends a message to every open tab (best-effort — most tabs have no content script
@@ -208,14 +356,20 @@ async function sessionInProgress(): Promise<boolean> {
 // gets the ghost the moment the user switches to it. The content script ignores the
 // message if the ghost is already visible, so re-delivery is harmless.
 async function deliverIfDue(tabId: number): Promise<void> {
+  assertInTransaction('deliverIfDue');
   const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
   if (!scheduler || scheduler.nextBreakAt > Date.now()) return;
   // Another tab is already handling this exact break — nextBreakAt won't move until it
   // finishes, so without this a tab switch mid-session would summon a second copy.
   if (await sessionInProgress()) return;
   if (isPaused(await getSettings())) return;
-  chrome.tabs.sendMessage(tabId, { type: 'BREAK_DUE', breakKind: scheduler.breakKind }, () => {
-    void chrome.runtime.lastError; // tab without a content script — expected, ignore
+  const shown = await prepareShownBreak(scheduler);
+  chrome.tabs.sendMessage(tabId, { type: 'BREAK_DUE', breakKind: shown.scheduler.breakKind }, () => {
+    // lastError means no content script in that tab (chrome://, store, etc.) — the
+    // ghost was NOT shown, so the day isn't marked active for it. This callback fires
+    // after the transaction has ended, so the mark needs its own.
+    if (chrome.runtime.lastError) return;
+    if (shown.present) void enqueueWrite('markActiveDay', () => markActiveDay(shown.dueDate));
   });
 }
 
@@ -225,6 +379,7 @@ async function deliverIfDue(tabId: number): Promise<void> {
 // extension or restarting the browser — reconcile against what's persisted instead,
 // and only fall back to a fresh schedule when nothing exists yet.
 async function reconcileSchedule(): Promise<void> {
+  assertInTransaction('reconcileSchedule');
   const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
   if (!scheduler) { await scheduleNext(); return; }
   const settings = await getSettings();
@@ -240,12 +395,12 @@ async function reconcileSchedule(): Promise<void> {
 }
 
 chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason === 'install') void scheduleNext();
-  else void reconcileSchedule();
+  if (details.reason === 'install') void enqueueWrite('install', () => scheduleNext());
+  else void enqueueWrite('reconcile', reconcileSchedule);
   void injectIntoOpenTabs();
 });
-chrome.runtime.onStartup.addListener(() => { void reconcileSchedule(); });
-chrome.tabs.onActivated.addListener(({ tabId }) => { void deliverIfDue(tabId); });
+chrome.runtime.onStartup.addListener(() => { void enqueueWrite('reconcile', reconcileSchedule); });
+chrome.tabs.onActivated.addListener(({ tabId }) => { void enqueueWrite('deliverIfDue', () => deliverIfDue(tabId)); });
 
 // Pausing (focus OR turning off) should feel immediate, not laggy by up to 5 minutes:
 // pausing hides a ghost that's already showing right now instead of leaving it up until
@@ -255,14 +410,15 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'sync') return;
   if (changes.focusUntil) {
     const newlyPaused = Boolean(changes.focusUntil.newValue && (changes.focusUntil.newValue as number) > Date.now());
-    void reactToPauseChange(newlyPaused);
+    void enqueueWrite('pauseChange', () => reactToPauseChange(newlyPaused));
   }
   if (changes.enabled) {
-    void reactToPauseChange(changes.enabled.newValue === false);
+    void enqueueWrite('pauseChange', () => reactToPauseChange(changes.enabled.newValue === false));
   }
 });
 
 async function reactToPauseChange(newlyPaused: boolean): Promise<void> {
+  assertInTransaction('reactToPauseChange');
   const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
   if (!scheduler) return;
   if (newlyPaused) {
@@ -289,7 +445,7 @@ async function reactToPauseChange(newlyPaused: boolean): Promise<void> {
   await scheduleNext(resumeNow, scheduler.cycleStep, effectiveBreaksToday(scheduler, resumeNow));
 }
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALARM_NAME) void notifyBreak();
+  if (alarm.name === ALARM_NAME) void enqueueWrite('notifyBreak', notifyBreak);
 });
 
 chrome.idle.onStateChanged.addListener((newState) => {
@@ -302,23 +458,29 @@ chrome.idle.onStateChanged.addListener((newState) => {
     return;
   }
   if (newState === 'active') {
-    void chrome.storage.local.get(['idleSince', 'scheduler']).then(async ({ idleSince, scheduler }) => {
+    void enqueueWrite('idleForgiveness', async () => {
+      const { idleSince, scheduler } = await chrome.storage.local.get(['idleSince', 'scheduler']) as { idleSince?: number; scheduler?: SchedulerState };
       await chrome.storage.local.remove('idleSince');
       // A short pause (checking your phone, thinking, or just watching the countdown
       // without touching the mouse) should NOT reset it — only forgive it as "break
       // taken" for a genuinely long absence.
       const settings = await getSettings();
       if (isPaused(settings)) return;
-      const s = scheduler as SchedulerState | undefined;
+      const s = scheduler;
       const thresholdMinutes = s?.breakKind === 'big' ? settings.bigMinutes : settings.microMinutes;
       const awayMs = typeof idleSince === 'number' ? Date.now() - idleSince : 0;
       if (awayMs >= Math.max(thresholdMinutes * 60_000, MIN_AWAY_MS)) {
         // "Forgiven" means this break counts as taken — advance one cycle step like
         // TAKE_BREAK does, not a full reset back to step 0 (which was also silently
         // wiping the whole day's breaksToday count on every long absence).
+        // Capture the break's date before scheduleNext() resets it.
+        const shownDate = s?.breakDueDate ?? null;
         const forgiveNow = Date.now();
         await scheduleNext(forgiveNow, ((s?.cycleStep ?? 0) + 1) % 3, effectiveBreaksToday(s, forgiveNow));
         await resolveBreak();
+        // Streak credit only if the ghost had actually peeked at a present user — see
+        // creditForgivenBreak for why an un-marked day must not be credited.
+        if (shownDate) await creditForgivenBreak(shownDate);
       }
     });
   }
@@ -326,18 +488,36 @@ chrome.idle.onStateChanged.addListener((newState) => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'SNOOZE') {
-    void chrome.storage.local.get('scheduler').then(async ({ scheduler }) => {
-      const s = scheduler as SchedulerState | undefined;
-      // Snooze DELAYS whatever's pending — it must never pull a break EARLIER. If the
-      // next break isn't due for another 18 minutes, "snooze 5 min" should add 5
-      // minutes to that, not replace it with "5 minutes from now".
-      const base = Math.max(s?.nextBreakAt ?? 0, Date.now());
-      const nextBreakAt = base + 5 * 60_000;
-      if (s) await chrome.storage.local.set({ scheduler: { ...s, nextBreakAt } });
-      await chrome.alarms.create(ALARM_NAME, { when: nextBreakAt });
-      await resolveBreak();
+    const snoozedAt = new Date();
+    void enqueueWrite('SNOOZE', async () => {
+      let snoozeUntil: number | null = null;
+      try {
+        const { scheduler: s } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
+        // Snooze DELAYS whatever's pending — it must never pull a break EARLIER. If the
+        // next break isn't due for another 18 minutes, "snooze 5 min" should add 5
+        // minutes to that, not replace it with "5 minutes from now".
+        const nextBreakAt = Math.max(s?.nextBreakAt ?? 0, Date.now()) + 5 * 60_000;
+        // Clicking snooze is presence — this break's day is active whether or not the
+        // idle check at peek time agreed.
+        const openedDay = await markActiveDay(breakDate(s, snoozedAt));
+        if (s) {
+          // If this click is what opened the day, restart the rhythm here too. The peek
+          // that preceded it could not: prepareShownBreak only resets when it can SEE
+          // the user, and a first-thing-in-the-morning peek at someone reading (no input
+          // in the last minute) reads as absent. Once the day has rolled, nothing else
+          // would ever reset it — so yesterday's leftover big break would keep re-nagging
+          // as big, all day.
+          const opened: SchedulerState = openedDay ? { ...s, cycleStep: 0, breakKind: 'micro' } : s;
+          await chrome.storage.local.set({ scheduler: { ...opened, nextBreakAt } });
+        }
+        await chrome.alarms.create(ALARM_NAME, { when: nextBreakAt });
+        await resolveBreak();
+        snoozeUntil = nextBreakAt;
+      } finally {
+        // The tab re-arms its precise due-timer against this — see content.ts armDueTimer.
+        sendResponse({ ok: snoozeUntil !== null, nextBreakAt: snoozeUntil });
+      }
     });
-    sendResponse({ ok: true });
   }
   if (message.type === 'SESSION_STARTED') {
     // A break is being handled in the sending tab right now — stop it escalating in
@@ -350,63 +530,92 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: true });
   }
   if (message.type === 'TAKE_BREAK') {
-    // Capture arrival time up front: recordCompletion runs later (and serialized), and
-    // a completion that arrives at 23:59 must count toward that day even if the write
-    // itself lands after midnight.
+    // Capture arrival time up front: the streak write runs later (and serialized), and
+    // the fallback date for an un-pinned break must be when it was acted on, not when
+    // the write lands.
     const completedAt = new Date();
     // Default missing/malformed data to "not completed" — safer to undercount than
     // to let a malformed message inflate the stat.
     const completed = message.completed === true;
-    // Enqueue SYNCHRONOUSLY, before any await, so completions join the serialized
-    // chain in arrival order — enqueueing later (after the scheduler read/write)
-    // would let two messages' async work race and enqueue out of order. The catch
-    // both logs the failure and keeps the chain usable for the next completion.
-    const pendingStreak = completed
-      ? (streakWrite = streakWrite
-          .then(() => recordCompletion(completedAt))
-          .catch((e) => console.error('Pak-a-boo: streak update failed', e)))
-      : null;
-    void chrome.storage.local.remove('sessionInProgressUntil');
-    void chrome.storage.local.get('scheduler').then(async ({ scheduler }) => {
-      const s = scheduler as SchedulerState | undefined;
-      await scheduleNext(completedAt.getTime(), ((s?.cycleStep ?? 0) + 1) % 3, effectiveBreaksToday(s, completedAt.getTime()) + (completed ? 1 : 0));
-      if (pendingStreak) await pendingStreak;
-      void resolveBreak();
-      const { scheduler: fresh } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
-      sendResponse({ ok: true, nextBreakAt: fresh?.nextBreakAt ?? null, breaksToday: fresh?.breaksToday ?? 0 });
+    // The WHOLE transaction — clear the session flag, read the scheduler, apply the
+    // streak, reschedule — is enqueued synchronously on arrival, so two TAKE_BREAKs are
+    // processed strictly in arrival order and neither can read a scheduler the other is
+    // mid-way through replacing. The break's date must come from the scheduler BEFORE
+    // scheduleNext() resets it. Acting on the ghost at all (skip included) is presence,
+    // so the day is marked active either way; completion also credits it.
+    void enqueueWrite('TAKE_BREAK', async () => {
+      let ok = false;
+      try {
+        await chrome.storage.local.remove('sessionInProgressUntil');
+        const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
+        const date = breakDate(scheduler, completedAt);
+        const openedDay = completed ? await recordCompletion(date) : await markActiveDay(date);
+        // Same reason as SNOOZE: if acting on this ghost is what opened the day, the
+        // break just handled belonged to yesterday's cycle, so the new day's rhythm
+        // starts fresh from the next one rather than continuing the old count.
+        const nextStep = openedDay ? 0 : ((scheduler?.cycleStep ?? 0) + 1) % 3;
+        await scheduleNext(completedAt.getTime(), nextStep, effectiveBreaksToday(scheduler, completedAt.getTime()) + (completed ? 1 : 0));
+        await resolveBreak(); // other tabs are cleared before the sender hears back
+        ok = true;
+      } finally {
+        // Always answer — the content script is waiting on this. The read is guarded
+        // separately so a failing storage call can't be what stops the reply going out.
+        let fresh: SchedulerState | undefined;
+        try {
+          ({ scheduler: fresh } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState });
+        } catch { /* answer with what we know rather than leaving the tab hanging */ }
+        sendResponse({ ok, nextBreakAt: fresh?.nextBreakAt ?? null, breaksToday: fresh?.breaksToday ?? 0 });
+      }
     });
   }
   if (message.type === 'RESET_CYCLE') {
-    void getSettings().then(async (settings) => {
-      // The popup already disables this button while paused, but the background must
-      // not just trust that — a click landing right as focus/off toggles shouldn't be
-      // able to move the cycle position while reminders are supposed to be silent.
-      if (isPaused(settings)) { sendResponse({ ok: false }); return; }
-      // A session already open in some tab isn't tied to the reset — it ignores
-      // BREAK_RESOLVED while active (see content.ts), so resetting out from under it
-      // would leave that tab's eventual TAKE_BREAK advancing the wrong cycle position.
-      // Decline instead, same as notifyBreak() deferring its re-nag in this situation.
-      if (await sessionInProgress()) { sendResponse({ ok: false }); return; }
-      // A manual restart — same cleanup as a completed break (clear any stuck
-      // in-progress/lapsed-pause flags) but back to cycle step 0 instead of +1, and
-      // today's completed-break count is untouched since that's a separate stat.
-      await chrome.storage.local.remove(['sessionInProgressUntil', 'pausedLastCheck']);
-      const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
-      const resetNow = Date.now();
-      await scheduleNext(resetNow, 0, effectiveBreaksToday(scheduler, resetNow));
-      await resolveBreak();
-      sendResponse({ ok: true });
+    void enqueueWrite('RESET_CYCLE', async () => {
+      let ok = false;
+      try {
+        const settings = await getSettings();
+        // The popup already disables this button while paused, but the background must
+        // not just trust that — a click landing right as focus/off toggles shouldn't be
+        // able to move the cycle position while reminders are supposed to be silent.
+        if (isPaused(settings)) return;
+        // A session already open in some tab isn't tied to the reset — it ignores
+        // BREAK_RESOLVED while active (see content.ts), so resetting out from under it
+        // would leave that tab's eventual TAKE_BREAK advancing the wrong cycle position.
+        // Decline instead, same as notifyBreak() deferring its re-nag in this situation.
+        if (await sessionInProgress()) return;
+        // A manual restart — same cleanup as a completed break (clear any stuck
+        // in-progress/lapsed-pause flags) but back to cycle step 0 instead of +1, and
+        // today's completed-break count is untouched since that's a separate stat.
+        await chrome.storage.local.remove(['sessionInProgressUntil', 'pausedLastCheck']);
+        const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
+        const resetNow = Date.now();
+        await scheduleNext(resetNow, 0, effectiveBreaksToday(scheduler, resetNow));
+        await resolveBreak();
+        ok = true;
+      } finally {
+        sendResponse({ ok }); // the popup awaits this — always answer
+      }
     });
   }
   if (message.type === 'CONTENT_READY') {
-    void chrome.storage.local.get('scheduler').then(async ({ scheduler }) => {
-      const s = scheduler as SchedulerState | undefined;
-      const settings = await getSettings();
-      const inSession = await sessionInProgress();
-      if (s && s.nextBreakAt <= Date.now() && !isPaused(settings) && !inSession) {
-        sendResponse({ breakDue: true, breakKind: s.breakKind });
-      } else {
-        sendResponse({ breakDue: false });
+    void enqueueWrite('CONTENT_READY', async () => {
+      // nextBreakAt lets the page arm its own precise timer for the moment the break is
+      // due (alarms can fire late — see content.ts askIfDue). Withheld while paused,
+      // when that time is meaningless.
+      let response: { breakDue: boolean; breakKind?: BreakKind; nextBreakAt?: number | null } = { breakDue: false, nextBreakAt: null };
+      try {
+        const { scheduler: s } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
+        const paused = isPaused(await getSettings());
+        const inSession = await sessionInProgress();
+        if (s && s.nextBreakAt <= Date.now() && !paused && !inSession) {
+          const shown = await prepareShownBreak(s);
+          response = { breakDue: true, breakKind: shown.scheduler.breakKind };
+          // The content script shows the ghost on this response.
+          if (shown.present) await markActiveDay(shown.dueDate);
+        } else {
+          response = { breakDue: false, nextBreakAt: s && !paused ? s.nextBreakAt : null };
+        }
+      } finally {
+        sendResponse(response);
       }
     });
   }

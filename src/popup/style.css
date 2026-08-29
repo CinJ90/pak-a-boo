@@ -37,8 +37,16 @@ h1 { margin: 0; font-size: 21px; line-height: 1; font-weight: 800; } p { margin:
 .streak-flame { font-size: 26px; transform-origin: 70% 90%; animation: flame-flicker 1.6s ease-in-out infinite; }
 .streak-info { flex: 1; min-width: 0; }
 .streak-info strong { display: block; font-size: 22px; line-height: 1; }
-.streak-info span { display: block; margin-top: 2px; font-size: 10px; letter-spacing: .6px; text-transform: uppercase; font-weight: 800; color: #6E8880; }
+.streak-caption-row { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+.streak-info span { display: block; font-size: 10px; letter-spacing: .6px; text-transform: uppercase; font-weight: 800; color: #6E8880; }
 .streak-progress { display: flex; gap: 5px; flex: none; }
+/* Sits inline after the "N days to next skin" caption. Native title tooltip explains the
+   active-day rule (see StreakState in types.ts) — no custom popover: the popup is 320px
+   wide and hover works normally in extension popups. Borderless so it reads as part of
+   the caption line, not a second control competing with the reset button. */
+.streak-help { flex: none; width: 16px; height: 16px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #9DBBAF; cursor: help; transition: color .2s; }
+.streak-help:hover, .streak-help:focus-visible { color: #4F9C82; outline: none; }
+.streak-help:focus-visible { box-shadow: 0 0 0 2px #B9D4C8; }
 .streak-dot { width: 9px; height: 9px; border-radius: 50%; background: #E7ECEA; border: 2px solid #DCEEE4; }
 .streak-dot.reached { background: #F3A93B; border-color: #F3A93B; }
 .streak-dot.current { animation: dot-pulse 1.2s ease-in-out infinite; }

@@ -1,5 +1,5 @@
 import '../popup/style.css';
-import { DEFAULT_SETTINGS, SKIN_MILESTONES, isYesterday, localDateStr, type SchedulerState, type Settings, type Skin, type StreakState } from '../types';
+import { DEFAULT_SETTINGS, SKIN_MILESTONES, isStreakAlive, localDateStr, normalizeStreak, type SchedulerState, type Settings, type Skin, type StreakState } from '../types';
 
 type Lang = Settings['language'];
 
@@ -24,7 +24,9 @@ const COPY = {
       if (daysToNext !== null) return `${daysToNext} ${daysToNext === 1 ? 'day' : 'days'} to next skin`;
       return 'day streak';
     },
-    skinLocked: (n: number) => `Unlock at ${n}-day streak`
+    skinLocked: (n: number) => `Unlock at ${n}-day streak`,
+    streakHelp: 'How the streak works',
+    streakHelpText: 'Counts days you actually worked. Days you’re away (weekends, holidays) don’t break it — only a working day with no breaks does.'
   },
   th: {
     tagline: 'Mr.Boo คอยเตือนให้คุณได้พัก',
@@ -46,7 +48,9 @@ const COPY = {
       if (daysToNext !== null) return `อีก ${daysToNext} วัน ปลดล็อกสกินถัดไป`;
       return 'วันติดต่อกัน';
     },
-    skinLocked: (n: number) => `ปลดล็อกที่สตรีค ${n} วัน`
+    skinLocked: (n: number) => `ปลดล็อกที่สตรีค ${n} วัน`,
+    streakHelp: 'สตรีคนับอย่างไร',
+    streakHelpText: 'นับเฉพาะวันที่คุณทำงานจริง วันที่ไม่ได้ใช้งาน (เสาร์-อาทิตย์ วันหยุด) ไม่ทำให้สตรีคขาด — ขาดเฉพาะเมื่อทำงานทั้งวันแต่ไม่ได้พักเลย'
   }
 } as const;
 
@@ -65,6 +69,7 @@ const langButtons = document.querySelectorAll<HTMLButtonElement>('.lang-btn');
 const streakCount = document.querySelector('#streak-count') as HTMLElement;
 const streakCaption = document.querySelector('#streak-caption') as HTMLElement;
 const streakDots = document.querySelectorAll<HTMLElement>('.streak-dot');
+const streakHelp = document.querySelector('#streak-help') as HTMLButtonElement;
 const skinButtons = document.querySelectorAll<HTMLButtonElement>('.skin-btn');
 
 // Ascending [skin, threshold] pairs (currently 2/5/7 for sprout/phones/crown) — derived
@@ -75,7 +80,7 @@ const MILESTONES = (Object.entries(SKIN_MILESTONES) as [Skin, number][]).sort((a
 const MILESTONE_THRESHOLDS = MILESTONES.map(([, threshold]) => threshold);
 
 async function refresh(): Promise<void> {
-  const { scheduler, sessionInProgressUntil, streak } = await chrome.storage.local.get(['scheduler', 'sessionInProgressUntil', 'streak']) as { scheduler?: SchedulerState; sessionInProgressUntil?: number; streak?: StreakState };
+  const { scheduler, sessionInProgressUntil, streak: rawStreak } = await chrome.storage.local.get(['scheduler', 'sessionInProgressUntil', 'streak']) as { scheduler?: SchedulerState; sessionInProgressUntil?: number; streak?: Partial<StreakState> };
   const settings = { ...DEFAULT_SETTINGS, ...(await chrome.storage.sync.get(DEFAULT_SETTINGS)) } as Settings;
   const lang: Lang = settings.language;
   const c = COPY[lang];
@@ -88,24 +93,31 @@ async function refresh(): Promise<void> {
   powerBtn.textContent = settings.enabled ? c.turnOff : c.turnOn;
   resetBtn.setAttribute('aria-label', c.resetCycle);
   resetBtn.title = c.resetCycle;
+  // The explanation lives in the tooltip; the label names the button for screen readers.
+  streakHelp.setAttribute('aria-label', c.streakHelp);
+  streakHelp.title = c.streakHelpText;
   langButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.lang === lang));
 
   // Streak/skins are independent of the schedule state (on/off/focus) and every
   // early-return branch below, so render them before any of those returns.
-  // The stored streak only resets lazily (on the next completed break), so gate the
-  // DISPLAYED value on recency: a streak is alive only if the last completion was
-  // today or yesterday. Unlocks are permanent and unaffected by this.
+  // The stored streak only resets lazily (on the background's next active-day roll),
+  // so gate the DISPLAYED value on isStreakAlive: it's dead once an active day before
+  // today ended with no completion. Inactive days (weekend, holiday) don't count
+  // against it. Unlocks are permanent and unaffected by this.
   const now = new Date();
-  const last = streak?.lastCompletedDate ?? null;
-  const streakAlive = last !== null && (last === localDateStr(now) || isYesterday(last, now));
-  const currentStreak = streakAlive ? (streak?.currentStreak ?? 0) : 0;
+  const streak = normalizeStreak(rawStreak, localDateStr(now));
+  // The "day in progress" is the pending break's own date when one has been shown
+  // (breakDueDate) — so a break peeked at 23:59 and not yet taken keeps the streak
+  // looking alive at 00:01, matching the day the background will credit it to.
+  const openDate = scheduler?.breakDueDate ?? localDateStr(now);
+  const currentStreak = isStreakAlive(streak, openDate) ? streak.currentStreak : 0;
   // breaksToday never auto-resets in storage — it only advances via a genuine
   // completion, same as currentStreak above — so a scheduler doc left over from
   // before today's first background event (reload, pause/resume, etc.) still shows
   // yesterday's count until breaksTodayDate says otherwise.
   const todaysBreaks = scheduler && scheduler.breaksTodayDate === localDateStr(now) ? scheduler.breaksToday : 0;
   streakCount.textContent = String(currentStreak);
-  const unlocked = streak?.unlockedSkins ?? [];
+  const unlocked = streak.unlockedSkins;
   // One dot per unlock milestone: filled once reached, pulsing on whichever is next
   // (the anticipation cue), plain otherwise.
   const nextIndex = MILESTONE_THRESHOLDS.findIndex((threshold) => currentStreak < threshold);

@@ -553,6 +553,7 @@ async function boot(): Promise<void> {
   let escalateT1: ReturnType<typeof setTimeout> | undefined;
   let escalateT2: ReturnType<typeof setTimeout> | undefined;
   let doneT: ReturnType<typeof setTimeout> | undefined;
+  let dueT: ReturnType<typeof setTimeout> | undefined;
   let stepTimer: ReturnType<typeof setInterval> | undefined;
   let sessionActive = false;
 
@@ -637,7 +638,13 @@ async function boot(): Promise<void> {
 
   function snooze(): void {
     retreat();
-    chrome.runtime.sendMessage({ type: 'SNOOZE' });
+    // The response carries the new nextBreakAt so the precise timer can be re-armed —
+    // without it the snoozed break comes back on the (possibly very late) alarm alone,
+    // which is exactly the lag armDueTimer exists to hide.
+    chrome.runtime.sendMessage({ type: 'SNOOZE' }, (response) => {
+      if (chrome.runtime.lastError) return;
+      armDueTimer(response?.nextBreakAt);
+    });
   }
 
   // ---- break session ----
@@ -731,7 +738,12 @@ async function boot(): Promise<void> {
     // the schedule advances either way (so it doesn't nag again in 10 min), but only
     // a real completion should count toward the breaksToday stat.
     chrome.runtime.sendMessage({ type: 'TAKE_BREAK', completed }, (response) => {
-      if (chrome.runtime.lastError || !completed) return;
+      if (chrome.runtime.lastError) return;
+      // Re-armed before the !completed bail: a SKIPPED break reschedules too, and
+      // letting the timer chain end here would put the next ghost back at the mercy
+      // of a late alarm.
+      armDueTimer(response?.nextBreakAt);
+      if (!completed) return;
       const c = COPY[lang];
       const parts: string[] = [];
       if (typeof response?.breaksToday === 'number') parts.push(c.breaksToday(response.breaksToday));
@@ -785,7 +797,12 @@ async function boot(): Promise<void> {
     if (message.type === 'BREAK_DUE') showPeek(message.breakKind === 'big' ? 'big' : 'micro');
     // The break was taken, skipped, or snoozed from a different tab — don't linger here.
     // Never interrupt a session actually in progress on this tab.
-    if (message.type === 'BREAK_RESOLVED' && !sessionActive) retreat();
+    if (message.type === 'BREAK_RESOLVED' && !sessionActive) {
+      retreat();
+      // Whatever resolved it (another tab, a pause, the ghost giving up) rescheduled —
+      // re-arm against the new time so this tab's precise timer chain never dead-ends.
+      askIfDue();
+    }
   });
 
   // Live language/skin switch — re-render whatever's currently visible without
@@ -826,10 +843,45 @@ async function boot(): Promise<void> {
 
   renderStaticLabels();
 
-  chrome.runtime.sendMessage({ type: 'CONTENT_READY' }, (response) => {
-    if (chrome.runtime.lastError) return;
-    if (response?.breakDue) showPeek(response.breakKind === 'big' ? 'big' : 'micro');
+  // Chrome batches MV3 alarms and can fire them tens of seconds late, which reads as
+  // "the popup's countdown hit 00:00 and nothing happened" until a refresh. The page
+  // has a precise clock, so on the tab the user is actually looking at, ask the
+  // background the moment the break is due. The background applies every one of its
+  // usual guards (pause, session in another tab), so this can't show a break the alarm
+  // path wouldn't; and if it isn't due after all, the response carries the new
+  // nextBreakAt to re-arm against. With no usable time (paused, or a session open
+  // elsewhere), fall back to a slow poll rather than spinning.
+  //
+  // ONLY the visible tab does this. Every ask costs a serialized transaction in the
+  // background, and 50 tabs restored at browser start — or worse, 50 tabs all holding
+  // the same nextBreakAt and firing at the same instant — would queue up behind each
+  // other for no benefit: a hidden tab has nobody to show a ghost to. Hidden tabs are
+  // already covered by the alarm's broadcast (which reaches every tab, so the ghost is
+  // waiting when you return) and by tabs.onActivated.
+  function armDueTimer(nextBreakAt: number | null | undefined): void {
+    if (dueT) clearTimeout(dueT);
+    dueT = undefined;
+    if (document.visibilityState !== 'visible') return;
+    const delay = typeof nextBreakAt === 'number' && nextBreakAt > Date.now()
+      ? nextBreakAt - Date.now() + 250
+      : 60_000;
+    dueT = setTimeout(askIfDue, delay);
+  }
+  function askIfDue(): void {
+    if (document.visibilityState !== 'visible') return;
+    chrome.runtime.sendMessage({ type: 'CONTENT_READY' }, (response) => {
+      if (chrome.runtime.lastError) return; // extension reloaded — this script is orphaned
+      if (response?.breakDue) { showPeek(response.breakKind === 'big' ? 'big' : 'micro'); return; }
+      armDueTimer(response?.nextBreakAt);
+    });
+  }
+  // Becoming visible asks straight away — that covers a break that came due while this
+  // tab was in the background, without the tab having polled for it.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') askIfDue();
+    else if (dueT) { clearTimeout(dueT); dueT = undefined; }
   });
+  askIfDue();
 }
 
 void boot();
