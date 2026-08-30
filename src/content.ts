@@ -9,6 +9,15 @@ import { displayedSkin, effectiveUnlocked, normalizeCounters, rollCounters, skin
 
 type Lang = Settings['language'];
 
+// Lets a re-injected instance (see boot()'s teardown call) find and tear down whatever
+// the previous instance in this tab registered. Module-scope state can't do this: each
+// injection of content.js runs as an entirely fresh top-level execution with its own
+// closures, so only something outside that scope — the page's own `window` — survives
+// from one instance to the next.
+declare global {
+  interface Window { __pakABooTeardown?: () => void }
+}
+
 // Bundled locally (not a Google Fonts CDN request) — a content script injects into
 // every page the user visits, so an external font request there would fire constantly
 // and conflict with the extension's zero-tracking, zero-servers positioning.
@@ -248,6 +257,19 @@ async function getSkinState(): Promise<{ unlocked: Skin[]; counters: Counters }>
 }
 
 async function boot(): Promise<void> {
+  // A previous instance of this script can still be alive in this tab: injectIntoOpenTabs()
+  // re-injects into every open tab on EVERY extension update (not just install), so a
+  // tab that's never reloaded across several updates ends up with this function having
+  // already run once per update. Its DOM gets replaced below, but
+  // chrome.runtime.onMessage/chrome.storage.onChanged/visibilitychange listeners and
+  // the skin-refresh interval registered near the end of this function are page/global-
+  // level, not attached to that DOM — nothing else would ever remove them, so every
+  // earlier instance's copy would keep running forever alongside each new one,
+  // compounding with every update.
+  const previousTeardown = window.__pakABooTeardown;
+  window.__pakABooTeardown = undefined;
+  previousTeardown?.();
+
   // An element left over from BEFORE an extension reload/update is orphaned — its
   // script's chrome.runtime is invalidated, but the DOM it built stays in the page.
   // Replace it rather than bailing, or the ghost silently never works in that tab
@@ -387,6 +409,11 @@ async function boot(): Promise<void> {
   let dueT: ReturnType<typeof setTimeout> | undefined;
   let stepTimer: ReturnType<typeof setInterval> | undefined;
   let sessionActive = false;
+  // Flips once teardown runs (see window.__pakABooTeardown below). An in-flight
+  // CONTENT_READY round-trip started before teardown can still resolve after it — this
+  // stops its callback from calling armDueTimer() and re-creating dueT, which nothing
+  // would ever clear again since teardown already ran and won't run a second time.
+  let disposed = false;
 
   function pick<T>(arr: readonly T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 
@@ -670,7 +697,7 @@ async function boot(): Promise<void> {
   mascot.addEventListener('keydown', keyActivate);
   flopper.addEventListener('keydown', keyActivate);
 
-  chrome.runtime.onMessage.addListener((message) => {
+  function onRuntimeMessage(message: { type?: string; breakKind?: string }): void {
     if (message.type === 'BREAK_DUE') showPeek(message.breakKind === 'big' ? 'big' : 'micro');
     // The break was taken, skipped, or snoozed from a different tab — don't linger here.
     // Never interrupt a session actually in progress on this tab.
@@ -680,14 +707,15 @@ async function boot(): Promise<void> {
       // re-arm against the new time so this tab's precise timer chain never dead-ends.
       askIfDue();
     }
-  });
+  }
+  chrome.runtime.onMessage.addListener(onRuntimeMessage);
 
   // Live language/skin switch — re-render whatever's currently visible without
   // resetting timers, so an open tab updates the moment the setting changes, no
   // refresh needed. Each field is gated independently (not a single "return if this
   // field is missing" at the top) so a skin-only change isn't swallowed by the
   // language check, and vice versa.
-  chrome.storage.onChanged.addListener((changes, area) => {
+  function onStorageChanged(changes: { [key: string]: chrome.storage.StorageChange }, area: string): void {
     // Unlocks live in storage.local; re-gate when they change so a milestone earned
     // while this tab is open puts the (already-selected) accessory on immediately.
     // Either key can change what's unlocked, so re-derive from storage rather than
@@ -718,7 +746,8 @@ async function boot(): Promise<void> {
       selectedSkin = (changes.skin.newValue as Skin | undefined) ?? 'none';
       refreshSkin();
     }
-  });
+  }
+  chrome.storage.onChanged.addListener(onStorageChanged);
 
   renderStaticLabels();
 
@@ -750,16 +779,18 @@ async function boot(): Promise<void> {
     if (document.visibilityState !== 'visible') return;
     safeSendMessage({ type: 'CONTENT_READY' }, (response) => {
       if (chrome.runtime.lastError) return; // extension reloaded — this script is orphaned
+      if (disposed) return; // torn down while this round-trip was in flight
       if (response?.breakDue) { showPeek(response.breakKind === 'big' ? 'big' : 'micro'); return; }
       armDueTimer(response?.nextBreakAt);
     });
   }
   // Becoming visible asks straight away — that covers a break that came due while this
   // tab was in the background, without the tab having polled for it.
-  document.addEventListener('visibilitychange', () => {
+  function onVisibilityChange(): void {
     if (document.visibilityState === 'visible') { askIfDue(); refreshSkin(); }
     else if (dueT) { clearTimeout(dueT); dueT = undefined; }
-  });
+  }
+  document.addEventListener('visibilitychange', onVisibilityChange);
   askIfDue();
 
   // A low-frequency backstop for the look itself, independent of any break event: the
@@ -767,7 +798,27 @@ async function boot(): Promise<void> {
   // pick up a passively-reached Zen without waiting for the next peek or an unrelated
   // storage write. One minute is frequent enough that nobody could notice the lag, and
   // infrequent enough that it costs nothing on a page left open all day.
-  setInterval(() => { if (document.visibilityState === 'visible') refreshSkin(); }, 60_000);
+  const skinRefreshInterval = setInterval(() => { if (document.visibilityState === 'visible') refreshSkin(); }, 60_000);
+
+  // Registered last, once every listener/timer above actually exists — see the
+  // teardown call at the top of this function for why this has to live on `window`
+  // rather than in module scope.
+  window.__pakABooTeardown = () => {
+    disposed = true;
+    // chrome.runtime/chrome.storage throw once THIS instance's own extension context is
+    // invalidated (a later update, orphaning this one in turn) — that must not stop the
+    // native DOM/timer cleanup below from running.
+    const safely = (fn: () => void): void => { try { fn(); } catch { /* context already gone */ } };
+    safely(() => chrome.runtime.onMessage.removeListener(onRuntimeMessage));
+    safely(() => chrome.storage.onChanged.removeListener(onStorageChanged));
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    clearInterval(skinRefreshInterval);
+    if (escalateT1) clearTimeout(escalateT1);
+    if (escalateT2) clearTimeout(escalateT2);
+    if (doneT) clearTimeout(doneT);
+    if (dueT) clearTimeout(dueT);
+    if (stepTimer) clearInterval(stepTimer);
+  };
 }
 
 void boot();
