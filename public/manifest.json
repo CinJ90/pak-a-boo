@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Pak-a-boo",
   "version": "1.1.1",
-  "description": "A ghost reminds you to rest, stretch, and hydrate every 20 min. Keep a streak to unlock ghost skins. 100% local, bilingual EN/TH.",
+  "description": "A ghost reminds you to rest, stretch, and hydrate — the 20-20-20 rule eases eye strain. Keep a streak to unlock ghost skins.",
   "permissions": ["alarms", "storage", "idle", "notifications", "scripting"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": { "service_worker": "background.js", "type": "module" },
