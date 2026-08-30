@@ -18,24 +18,53 @@ declare global {
   interface Window { __pakABooTeardown?: () => void }
 }
 
-// Bundled locally (not a Google Fonts CDN request) — a content script injects into
-// every page the user visits, so an external font request there would fire constantly
-// and conflict with the extension's zero-tracking, zero-servers positioning.
-const FONT_BASE = chrome.runtime.getURL('fonts/');
+// Font registration (Pak-a-boo Sans / Pak-a-boo Sans Thai, bundled locally rather than a
+// Google Fonts CDN request — an external font request on every page visited would fire
+// constantly and conflict with the extension's zero-tracking positioning). Deliberately
+// NOT a `@font-face` CSS rule, declarative or otherwise:
+//   1. Chrome never registers @font-face rules declared inside a shadow root
+//      (crbug.com/336876): the rule parses, the computed font-family even reports the
+//      declared stack, but no font loads and text silently renders in the fallback. So
+//      it must be registered at the page's own document level, not the shadow root.
+//   2. Whatever puts the @font-face rule on the page's document — a content-script-
+//      appended <style>, or even chrome.scripting.insertCSS / a manifest-declared
+//      content_scripts css file, which DO bypass the page's style-src — the resulting
+//      `src: url(...)` is still a browser-initiated resource fetch of type "font", and
+//      that's governed by the page's font-src CSP regardless of how the referencing
+//      stylesheet got there. Most sites don't restrict font-src, but any that do (and
+//      none allowlist chrome-extension:// origins) silently block it, and the mascot
+//      falls back to a generic system font — worse for Thai, which has no good generic
+//      match, than for Latin, which happens to look closeish to most system UI fonts.
+// So instead: fetch the bytes ourselves (a content script's own fetch() runs with the
+// extension's privilege, not the page's — read-only network requests it makes aren't
+// subject to the page's CSP at all) and hand them to the Font Loading API as an
+// ArrayBuffer. That never triggers a browser-initiated "font" resource fetch, so
+// font-src has nothing to block, and document.fonts is document-scoped, so it's usable
+// from the shadow root once registered (solving #1 too).
+declare global { interface Window { __pakABooFontsRegistered?: boolean } }
 
-// Chrome never registers @font-face rules declared inside a shadow root
-// (crbug.com/336876): the rule parses, the computed font-family even reports the
-// declared stack, but no font loads and text silently renders in the fallback.
-// So these MUST be injected into the page's own document — fonts registered at
-// document level are usable from shadow DOM. Registered under extension-unique
-// family names (not "IBM Plex Sans") so a page that lists IBM Plex in a font
-// stack without bundling it doesn't suddenly change appearance because of us.
-const FONT_CSS = `
-@font-face { font-family: 'Pak-a-boo Sans'; font-weight: 500; font-display: swap; src: url('${FONT_BASE}ibm-plex-sans-latin.woff2') format('woff2'); }
-@font-face { font-family: 'Pak-a-boo Sans'; font-weight: 700; font-display: swap; src: url('${FONT_BASE}ibm-plex-sans-latin.woff2') format('woff2'); }
-@font-face { font-family: 'Pak-a-boo Sans Thai'; font-weight: 500; font-display: swap; src: url('${FONT_BASE}ibm-plex-sans-thai-500.woff2') format('woff2'); }
-@font-face { font-family: 'Pak-a-boo Sans Thai'; font-weight: 700; font-display: swap; src: url('${FONT_BASE}ibm-plex-sans-thai-700.woff2') format('woff2'); }
-`;
+function registerFonts(): void {
+  // Only latched on full success — a page whose first attempt failed (a transient fetch
+  // error, say) gets to retry on the next re-injection instead of being stuck relying on
+  // the CSS fallback stack for the rest of its lifetime.
+  if (window.__pakABooFontsRegistered) return;
+  const specs: Array<[family: string, weight: string, file: string]> = [
+    ['Pak-a-boo Sans', '500', 'ibm-plex-sans-latin.woff2'],
+    ['Pak-a-boo Sans', '700', 'ibm-plex-sans-latin.woff2'],
+    ['Pak-a-boo Sans Thai', '500', 'ibm-plex-sans-thai-500.woff2'],
+    ['Pak-a-boo Sans Thai', '700', 'ibm-plex-sans-thai-700.woff2']
+  ];
+  Promise.allSettled(specs.map(([family, weight, file]) =>
+    fetch(chrome.runtime.getURL(`fonts/${file}`))
+      .then((res) => res.arrayBuffer())
+      .then((bytes) => new FontFace(family, bytes, { weight }).load())
+      .then((face) => { document.fonts.add(face); })
+  )).then((results) => {
+    // Individual successes are kept (each face was already added as it resolved) even
+    // when others failed — only the retry latch requires a clean sweep.
+    if (results.every((r) => r.status === 'fulfilled')) window.__pakABooFontsRegistered = true;
+  });
+}
 
 type BreakKind = 'micro' | 'big';
 interface StepDef { id: string; secs: number; pose: string; }
@@ -276,15 +305,10 @@ async function boot(): Promise<void> {
   // again until a manual page refresh (exactly what auto-injection exists to avoid).
   document.getElementById('pak-a-boo-host')?.remove();
 
-  // Same stale-element treatment for the font registration, which must live in the
-  // page's document (not the shadow root) — see the FONT_CSS comment for why. A
-  // reloaded extension gets a new chrome-extension:// base URL for the woff2 files,
-  // so the old style element's URLs would be dead anyway.
-  document.getElementById('pak-a-boo-fonts')?.remove();
-  const fontStyle = document.createElement('style');
-  fontStyle.id = 'pak-a-boo-fonts';
-  fontStyle.textContent = FONT_CSS;
-  (document.head ?? document.documentElement).append(fontStyle);
+  // Fire-and-forget: runs concurrently with the storage reads below rather than
+  // blocking on it. font-display: swap-equivalent — text renders with the fallback
+  // stack immediately and swaps once each FontFace resolves.
+  registerFonts();
 
   let lang: Lang = await getLang();
   let selectedSkin: Skin = await getSkin();
