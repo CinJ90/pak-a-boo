@@ -161,7 +161,7 @@ export const GHOST_SVG = `
         <path class="crown-shine" d="M82 54 H130" stroke="${GBODY}" stroke-width="4.5" stroke-linecap="round"/>
       </g>
 
-      <!-- ── legendary: Cat Nap — an orange loaf asleep on the head ── -->
+      <!-- ── legendary: Orange Cat — an orange loaf asleep on the head ── -->
       <g class="skin-cat" style="transform-origin: 105px 54px; animation: accwob 7.4s ease-in-out infinite;">
         <path d="M74 30 L67 8 L89 20 Z" fill="${CAT}" stroke="${INK}" stroke-width="6" stroke-linejoin="round"/>
         <path d="M136 30 L143 8 L121 20 Z" fill="${CAT}" stroke="${INK}" stroke-width="6" stroke-linejoin="round"/>

@@ -15,7 +15,7 @@ import { asCount } from './types';
 //                  (see resolveDefaultLook): an event costume during its window, else
 //                  the most recently earned behaviour look, else the plain sheet.
 //   2..4. sprout / phones / crown — the streak ladder.
-//   5. Cat Nap   — legendary, 21 cumulative active days. Shows as "?" until earned.
+//   5. Orange Cat — legendary, 21 cumulative active days. Shows as "?" until earned.
 // Behaviour and event skins deliberately have NO button of their own: they change who
 // Mr.Boo is, rather than adding to a grid that would grow every release.
 // ---------------------------------------------------------------------------
@@ -285,7 +285,7 @@ export const SKIN_REGISTRY: SkinDef[] = [
   },
   {
     id: 'cat', kind: 'legendary',
-    label: { en: 'Cat Nap', th: 'แมวส้มหลับ' },
+    label: { en: 'Orange Cat', th: 'แมวส้ม' },
     hint: { en: 'Rest with Mr.Boo on 21 different days', th: 'พักกับมิสเตอร์บูให้ครบ 21 วัน' },
     unlock: { type: 'counter', key: 'activeDaysTotal', min: 21 },
     icon: `<path d="M6.5 9 L5.5 3.5 L10 6 Z" fill="#F0964B" stroke="#3E5750" stroke-width="1.5" stroke-linejoin="round"/><path d="M17.5 9 L18.5 3.5 L14 6 Z" fill="#F0964B" stroke="#3E5750" stroke-width="1.5" stroke-linejoin="round"/><path d="M4 13.5 C4 9.5 7.5 7.5 12 7.5 C16.5 7.5 20 9.5 20 13.5 C20 15.6 17 16.5 12 16.5 C7 16.5 4 15.6 4 13.5 Z" fill="#F0964B" stroke="#3E5750" stroke-width="1.6" stroke-linejoin="round"/><path d="M7.5 12 Q9 13.6 10.5 12" fill="none" stroke="#3E5750" stroke-width="1.4" stroke-linecap="round"/><path d="M13.5 12 Q15 13.6 16.5 12" fill="none" stroke="#3E5750" stroke-width="1.4" stroke-linecap="round"/><path d="M11 13.8 L13 13.8 L12 15 Z" fill="#E5AFAC" stroke="#3E5750" stroke-width="1"/>`
@@ -296,7 +296,7 @@ export const SKIN_REGISTRY: SkinDef[] = [
   // the ghost never has a look that means "you've been bad".,
   {
     id: 'nightcap', kind: 'behaviour',
-    label: { en: 'Sleepy Boo', th: 'บูจอมดึก' },
+    label: { en: 'Sleepy Boo', th: 'บูนอนดึก' },
     unlock: { type: 'daily', key: 'nightOwl', min: MOOD_BREAK_THRESHOLD },
     icon: `<path d="M4 15 C4 9 7.5 5.5 12 5.5 C15.4 5.5 18 7.5 19 10.5 L19 15 Z" fill="#8C93D8" stroke="#3E5750" stroke-width="1.6" stroke-linejoin="round"/><rect x="3" y="14" width="17" height="4" rx="2" fill="#FBFFFC" stroke="#3E5750" stroke-width="1.5"/><path d="M17 7 C20 5.5 22 7 21 9" fill="none" stroke="#8C93D8" stroke-width="2.2" stroke-linecap="round"/><circle cx="21" cy="10.5" r="2" fill="#FBFFFC" stroke="#3E5750" stroke-width="1.4"/>`
   },
@@ -321,31 +321,31 @@ export const SKIN_REGISTRY: SkinDef[] = [
   },
   {
     id: 'party', kind: 'event',
-    label: { en: 'Countdown', th: 'บูปีใหม่' },
+    label: { en: 'Party Boo', th: 'บูปาร์ตี้' },
     unlock: { type: 'window', window: { from: '12-31', to: '01-02' } },
     icon: `<path d="M12 3.5 L18 17.5 L6 17.5 Z" fill="#E9668F" stroke="#3E5750" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.6 14.5 H15.4 M10 10.5 H14" fill="none" stroke="#FBFFFC" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="3.5" r="2.1" fill="#F3A93B" stroke="#3E5750" stroke-width="1.3"/>`
   },
   {
     id: 'santa', kind: 'event',
-    label: { en: 'Santa Boo', th: 'บูซานตา' },
+    label: { en: 'Santa Boo', th: 'บูซานต้า' },
     unlock: { type: 'window', window: { from: '12-20', to: '12-26' } },
     icon: `<path d="M4 15 C4 9 7.5 5.5 12 5.5 C15.4 5.5 18 7.5 19 10.5 L19 15 Z" fill="#D6453C" stroke="#3E5750" stroke-width="1.6" stroke-linejoin="round"/><rect x="3" y="14" width="17" height="4" rx="2" fill="#FBFFFC" stroke="#3E5750" stroke-width="1.5"/><path d="M17 7 C20 5.5 22 7 21 9" fill="none" stroke="#D6453C" stroke-width="2.2" stroke-linecap="round"/><circle cx="21" cy="10.5" r="2" fill="#FBFFFC" stroke="#3E5750" stroke-width="1.4"/>`
   },
   {
     id: 'antlers', kind: 'event',
-    label: { en: 'Reindeer', th: 'บูกวางเรนเดียร์' },
+    label: { en: 'Reindeer Boo', th: 'บูเรนเดียร์' },
     unlock: { type: 'window', window: { from: '12-01', to: '12-31' } },
     icon: `<path d="M9.5 18 C7.5 13 6 10.5 3.5 8.5 M6.5 11.5 C5 10 3.5 9.5 2.5 10 M8 14 C6.5 13 5 13.2 4 14.2 M14.5 18 C16.5 13 18 10.5 20.5 8.5 M17.5 11.5 C19 10 20.5 9.5 21.5 10 M16 14 C17.5 13 19 13.2 20 14.2" fill="none" stroke="#8A5A3B" stroke-width="1.8" stroke-linecap="round"/><circle cx="11" cy="8" r="1.6" fill="#D6453C" stroke="#3E5750" stroke-width="1.1"/><circle cx="13.6" cy="6.6" r="1.4" fill="#D6453C" stroke="#3E5750" stroke-width="1.1"/>`
   },
   {
     id: 'valentine', kind: 'event',
-    label: { en: 'Sweetheart', th: 'บูวาเลนไทน์' },
+    label: { en: 'Sweetheart Boo', th: 'บูวาเลนไทน์' },
     unlock: { type: 'window', window: { from: '02-13', to: '02-15' } },
     icon: `<path d="M8 16 C3.6 12.2 4.8 7.6 8 10.4 C11.2 7.6 12.4 12.2 8 16 Z" fill="#E0507E" stroke="#3E5750" stroke-width="1.4" stroke-linejoin="round"/><path d="M16 16 C11.6 12.2 12.8 7.6 16 10.4 C19.2 7.6 20.4 12.2 16 16 Z" fill="#E0507E" stroke="#3E5750" stroke-width="1.4" stroke-linejoin="round"/>`
   },
   {
     id: 'songkran', kind: 'event',
-    label: { en: 'Malai', th: 'บูสงกรานต์' },
+    label: { en: 'Malai Boo', th: 'บูสงกรานต์' },
     unlock: { type: 'window', window: { from: '04-13', to: '04-15' } },
     icon: `<path d="M4 17 C4 10.4 7.6 6.5 12 6.5 C16.4 6.5 20 10.4 20 17" fill="none" stroke="#3E5750" stroke-width="4.6" stroke-linecap="round" stroke-dasharray="0.4 3.1" opacity=".35"/><path d="M4 17 C4 10.4 7.6 6.5 12 6.5 C16.4 6.5 20 10.4 20 17" fill="none" stroke="#FBFFFC" stroke-width="3.2" stroke-linecap="round" stroke-dasharray="0.4 3.1"/><circle cx="4" cy="17" r="1.9" fill="#F3A93B" stroke="#3E5750" stroke-width="1.2"/><circle cx="20" cy="17" r="1.9" fill="#F3A93B" stroke="#3E5750" stroke-width="1.2"/><circle cx="12" cy="5.6" r="1.7" fill="#E9668F" stroke="#3E5750" stroke-width="1.2"/>`
   },
