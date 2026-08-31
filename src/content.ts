@@ -145,6 +145,9 @@ function stepCopy(id: string, lang: Lang): { label: string; cue: string } {
 
 const STYLE = `
   :host { all: initial; }
+  /* Otherwise this fixed-position overlay — z-index 2147483647, meant to always sit on
+     top of the page on screen — prints right along with the page's own content. */
+  @media print { :host { display: none !important; } }
   * { box-sizing: border-box; font-family: inherit; }
   .root { font-family: 'Pak-a-boo Sans', 'Pak-a-boo Sans Thai', system-ui, -apple-system, sans-serif; }
 
@@ -817,6 +820,21 @@ async function boot(): Promise<void> {
   document.addEventListener('visibilitychange', onVisibilityChange);
   askIfDue();
 
+  // Whether the overlay stays clear of a page's OWN fullscreen content depends entirely
+  // on what that page put IN the fullscreen element's subtree, not on our z-index: the
+  // top layer only obscures content outside that subtree. YouTube fullscreens
+  // <html> itself (so the whole page, us included, ends up inside it — nothing to
+  // obscure, and the mascot bleeds through); a slide deck fullscreens one inner element
+  // (we're outside it, so the top layer correctly hides us). Rather than depend on that
+  // per-site accident, hide explicitly whenever ANY element is fullscreen — including on
+  // first run, in case this script was (re)injected onto a page already fullscreen (an
+  // SPA navigation, or an extension reload mid-video).
+  function onFullscreenChange(): void {
+    host.style.display = document.fullscreenElement ? 'none' : '';
+  }
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  onFullscreenChange();
+
   // A low-frequency backstop for the look itself, independent of any break event: the
   // mascot on a tab that's simply sitting open should still cross local midnight and
   // pick up a passively-reached Zen without waiting for the next peek or an unrelated
@@ -836,6 +854,7 @@ async function boot(): Promise<void> {
     safely(() => chrome.runtime.onMessage.removeListener(onRuntimeMessage));
     safely(() => chrome.storage.onChanged.removeListener(onStorageChanged));
     document.removeEventListener('visibilitychange', onVisibilityChange);
+    document.removeEventListener('fullscreenchange', onFullscreenChange);
     clearInterval(skinRefreshInterval);
     if (escalateT1) clearTimeout(escalateT1);
     if (escalateT2) clearTimeout(escalateT2);
