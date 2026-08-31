@@ -68,6 +68,7 @@ const nextPeekLabel = document.querySelector('#next-peek-label') as HTMLElement;
 const breakLabel = document.querySelector('#break-label') as HTMLElement;
 const breaksLabel = document.querySelector('#breaks-label') as HTMLElement;
 const cocoaLink = document.querySelector('#cocoa-link') as HTMLElement;
+const versionLabel = document.querySelector('#version') as HTMLElement;
 const langButtons = document.querySelectorAll<HTMLButtonElement>('.lang-btn');
 const streakCount = document.querySelector('#streak-count') as HTMLElement;
 const streakCaption = document.querySelector('#streak-caption') as HTMLElement;
@@ -145,6 +146,8 @@ async function refresh(): Promise<void> {
   breakLabel.textContent = c.bodyThanks;
   breaksLabel.textContent = c.breaksToday;
   cocoaLink.textContent = c.cocoa;
+  // Read straight from the manifest so this can't drift from the shipped version again.
+  versionLabel.textContent = `v${chrome.runtime.getManifest().version}`;
   powerBtn.textContent = settings.enabled ? c.turnOff : c.turnOn;
   resetBtn.setAttribute('aria-label', c.resetCycle);
   resetBtn.title = c.resetCycle;
