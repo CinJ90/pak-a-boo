@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS, isStaleBreak, localDateStr, normalizeStreak, rollActiveDay, type BreakKind, type SchedulerState, type Settings, type Skin, type StreakState } from './types';
-import { activeEventSkin, earnedSkins, moodCounterForHour, normalizeCounters, rollCounters, satisfiedMoods, settleFocus, type Counters } from './skins';
+import { activeEventSkin, closeScreenSegment, earnedSkins, moodCounterForHour, normalizeCounters, openScreenSegment, rollCounters, satisfiedMoods, settleFocus, type Counters } from './skins';
 
 const ALARM_NAME = 'pak-a-boo-next-break';
 // chrome.idle only tracks physical mouse/keyboard input — it can't tell "genuinely away"
@@ -581,7 +581,29 @@ async function syncUnlocks(): Promise<void> {
   await commitProgress(streak, counters, now);
 }
 
-async function reconcileSchedule(): Promise<void> {
+// A fresh service-worker instance can't blindly trust an OPEN screen-time segment left
+// by a previous one — but whether that segment is still trustworthy depends on WHY the
+// instance is fresh. If the browser was fully closed with a segment open, the closing
+// idle/locked transition that would normally bank it never fires — chrome.idle only
+// reports changes to a running listener — so the segment would otherwise sit open and
+// silently absorb the entire closed-browser span the moment anything next reads it;
+// that case must discard it. But an extension update/reload restarts the service worker
+// while the browser (and the OS-level idle clock the segment's timestamp is measured
+// against) never stopped — the previous instance's segment is exactly as valid as if
+// this instance had opened it, so THAT case must bank it instead of losing however long
+// it had already run. `bankOpenSegment` is how the two callers below tell this apart.
+async function reconcileScreenTime(bankOpenSegment: boolean): Promise<void> {
+  assertInTransaction('reconcileScreenTime');
+  const now = new Date();
+  const today = localDateStr(now);
+  const raw = await readCounters(today, now.getTime());
+  const settled = bankOpenSegment ? closeScreenSegment(raw, now.getTime()) : { ...raw, screenActiveSince: null };
+  const state = await chrome.idle.queryState(PRESENCE_WINDOW_S);
+  const counters = state === 'active' ? openScreenSegment(settled, now.getTime()) : settled;
+  await chrome.storage.local.set({ counters });
+}
+
+async function reconcileSchedule(bankOpenSegment: boolean): Promise<void> {
   assertInTransaction('reconcileSchedule');
   // A fresh service-worker instance (extension reload/update, or the browser itself
   // relaunching) can't trust any idle-absence bookkeeping a PREVIOUS instance left
@@ -593,6 +615,7 @@ async function reconcileSchedule(): Promise<void> {
   // crediting a day that has nothing to do with it.
   await chrome.storage.local.remove(['idleSince', 'idleForgivenessDate', 'lastShownActiveDate']);
   await syncUnlocks();
+  await reconcileScreenTime(bankOpenSegment);
   const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
   if (!scheduler) { await scheduleNext(); return; }
   const settings = await getSettings();
@@ -608,11 +631,29 @@ async function reconcileSchedule(): Promise<void> {
 }
 
 chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason === 'install') void enqueueWrite('install', () => scheduleNext());
-  else void enqueueWrite('reconcile', reconcileSchedule);
+  if (details.reason === 'install') {
+    // A fresh install also needs its screen-time segment opened against the CURRENT
+    // idle state (see reconcileScreenTime) — without this, screenActiveSince stays
+    // null from DEFAULT_COUNTERS until the first idle->active transition, silently
+    // dropping however long the user is active before then. Nothing to bank yet, so
+    // bankOpenSegment is moot here — pass false for consistency.
+    void enqueueWrite('install', async () => { await scheduleNext(); await reconcileScreenTime(false); });
+  } else if (details.reason === 'chrome_update') {
+    // Unlike an extension-only update/reload below, 'chrome_update' means the BROWSER
+    // itself just restarted — same as onStartup, so the open segment can't be trusted
+    // (see reconcileScreenTime's own comment) and must be discarded, not banked.
+    void enqueueWrite('reconcile', () => reconcileSchedule(false));
+  } else {
+    // An extension update/reload restarts the service worker without the browser itself
+    // ever closing — see reconcileScreenTime's own comment for why that makes the
+    // previous instance's open segment still trustworthy to bank.
+    void enqueueWrite('reconcile', () => reconcileSchedule(true));
+  }
   void injectIntoOpenTabs();
 });
-chrome.runtime.onStartup.addListener(() => { void enqueueWrite('reconcile', reconcileSchedule); });
+// The browser itself just relaunched — any segment left open by whatever instance was
+// running before it closed can't be trusted (see reconcileScreenTime): discard it.
+chrome.runtime.onStartup.addListener(() => { void enqueueWrite('reconcile', () => reconcileSchedule(false)); });
 chrome.tabs.onActivated.addListener(({ tabId }) => { void enqueueWrite('deliverIfDue', () => deliverIfDue(tabId)); });
 
 // Pausing (focus OR turning off) should feel immediate, not laggy by up to 5 minutes:
@@ -710,6 +751,16 @@ chrome.idle.onStateChanged.addListener((newState) => {
       await chrome.storage.local.remove('lastShownActiveDate');
       await chrome.storage.local.set({ idleSince: Date.now(), idleForgivenessDate });
     });
+    // Independent of the forgiveness bookkeeping above (own enqueueWrite, not folded
+    // into it, so a future change to either can't accidentally couple them) — banks
+    // whatever screen-time segment was running into today's total. Same serialized
+    // chain, so this can't race a concurrent counters write from elsewhere.
+    void enqueueWrite('closeScreenTime', async () => {
+      const now = new Date();
+      const today = localDateStr(now);
+      const counters = closeScreenSegment(await readCounters(today, now.getTime()), now.getTime());
+      await chrome.storage.local.set({ counters });
+    });
     return;
   }
   if (newState === 'active') {
@@ -743,6 +794,15 @@ chrome.idle.onStateChanged.addListener((newState) => {
         // creditForgivenBreak for why an un-marked day must not be credited.
         if (shownDate) await creditForgivenBreak(shownDate);
       }
+    });
+    // Same independence as closeScreenTime above — opens a fresh segment now that the
+    // user is demonstrably back, regardless of whether this absence was long enough to
+    // forgive a break.
+    void enqueueWrite('openScreenTime', async () => {
+      const now = new Date();
+      const today = localDateStr(now);
+      const counters = openScreenSegment(await readCounters(today, now.getTime()), now.getTime());
+      await chrome.storage.local.set({ counters });
     });
   }
 });

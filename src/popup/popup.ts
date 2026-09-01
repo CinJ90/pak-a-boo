@@ -1,12 +1,12 @@
 import '../popup/style.css';
-import { DEFAULT_SETTINGS, isStreakAlive, localDateStr, normalizeStreak, type SchedulerState, type Settings, type Skin, type StreakState } from '../types';
-import { COLLECTABLE, STREAK_MILESTONES, effectiveUnlocked, normalizeCounters, resolveDefaultLook, rollCounters, skinDef, type Counters } from '../skins';
+import { CHARACTER_REGISTRY, DEFAULT_SETTINGS, isStreakAlive, localDateStr, normalizeStreak, type Character, type SchedulerState, type Settings, type Skin, type StreakState } from '../types';
+import { COLLECTABLE, STREAK_MILESTONES, effectiveUnlocked, normalizeCounters, resolveDefaultLook, rollCounters, screenMsSoFar, skinDef, type Counters } from '../skins';
 
 type Lang = Settings['language'];
 
 const COPY = {
   en: {
-    tagline: 'Mr.Boo will make you Pak (rest).',
+    tagline: (charName: string) => `${charName} will make you Pak (rest).`,
     nextPeek: 'NEXT PEEK',
     focusEnds: 'FOCUS ENDS IN',
     bodyThanks: 'Your body will thank you.',
@@ -15,6 +15,7 @@ const COPY = {
     turnOff: 'Turn off',
     turnOn: 'Turn on',
     breaksToday: 'breaks today',
+    screenTimeToday: 'screen time today',
     onSchedule: 'On schedule',
     focusStatus: 'Focus mode — breaks paused',
     offStatus: 'Off — no reminders',
@@ -31,7 +32,7 @@ const COPY = {
     streakHelpText: 'Counts days you actually worked. Days you’re away (weekends, holidays) don’t break it — only a working day with no breaks does.'
   },
   th: {
-    tagline: 'Mr.Boo คอยเตือนให้คุณได้พัก',
+    tagline: (charName: string) => `${charName}คอยเตือนให้คุณได้พัก`,
     nextPeek: 'จะมาตามไปพักใน',
     focusEnds: 'ยกเลิกโฟกัสใน',
     bodyThanks: 'พักเพื่อสุขภาพของคุณ',
@@ -40,6 +41,7 @@ const COPY = {
     turnOff: 'ปิดการเตือน',
     turnOn: 'เปิดการเตือน',
     breaksToday: 'พักแล้ววันนี้',
+    screenTimeToday: 'เวลาหน้าจอวันนี้',
     onSchedule: 'โหมดปกติ',
     focusStatus: 'โหมดโฟกัส — พักหยุดชั่วคราว',
     offStatus: 'ปิดอยู่ — ไม่มีการเตือน',
@@ -59,6 +61,8 @@ const COPY = {
 
 const countdown = document.querySelector('#countdown') as HTMLElement;
 const breaks = document.querySelector('#breaks') as HTMLElement;
+const screenTime = document.querySelector('#screen-time') as HTMLElement;
+const screenTimeLabel = document.querySelector('#screen-time-label') as HTMLElement;
 const status = document.querySelector('#status') as HTMLElement;
 const focusBtn = document.querySelector('#focus') as HTMLButtonElement;
 const powerBtn = document.querySelector('#power') as HTMLButtonElement;
@@ -74,6 +78,7 @@ const streakCount = document.querySelector('#streak-count') as HTMLElement;
 const streakCaption = document.querySelector('#streak-caption') as HTMLElement;
 const streakDots = document.querySelectorAll<HTMLElement>('.streak-dot');
 const streakHelp = document.querySelector('#streak-help') as HTMLButtonElement;
+const characterButtons = document.querySelectorAll<HTMLButtonElement>('.character-btn');
 
 // Ascending [skin, days] pairs (2/5/7 for sprout/phones/crown), derived from the
 // registry rather than restated here, so the progress dots and the "days to next skin"
@@ -102,13 +107,13 @@ function icon(skin: Skin): string {
 // the row impossible to operate by keyboard at all. Build the HTML and only touch the
 // DOM when it actually differs from what's already there.
 let lastSkinRowHtml = '';
-function renderSkinRow(lang: Lang, selected: Skin, unlocked: readonly Skin[], counters: Counters, now: Date): void {
+function renderSkinRow(lang: Lang, selected: Skin, unlocked: readonly Skin[], counters: Counters, now: Date, charName: string): void {
   const c = COPY[lang];
   // Slot 1 is a live readout of today, not a stored selection — an event costume in
-  // season, else the mood today's breaks have put Mr.Boo in, else the plain sheet.
+  // season, else the mood today's breaks have put the character in, else the plain sheet.
   const defaultLook = resolveDefaultLook(counters, now);
   const cells = [
-    { id: 'none' as Skin, look: defaultLook, unlockedHere: true, title: skinDef(defaultLook)?.label[lang] ?? '' },
+    { id: 'none' as Skin, look: defaultLook, unlockedHere: true, title: skinDef(defaultLook)?.label[lang](charName) ?? '' },
     ...COLLECTABLE.map((def) => {
       const has = unlocked.includes(def.id);
       const streakDays = MILESTONES.find(([id]) => id === def.id)?.[1];
@@ -117,9 +122,9 @@ function renderSkinRow(lang: Lang, selected: Skin, unlocked: readonly Skin[], co
         look: has ? def.id : def.kind === 'legendary' ? null : def.id,
         unlockedHere: has,
         title: has
-          ? def.label[lang]
+          ? def.label[lang](charName)
           : def.kind === 'legendary'
-            ? (def.hint?.[lang] ?? c.mystery)
+            ? (def.hint?.[lang](charName) ?? c.mystery)
             : streakDays !== undefined ? c.skinLocked(streakDays) : ''
       };
     })
@@ -138,13 +143,21 @@ function renderSkinRow(lang: Lang, selected: Skin, unlocked: readonly Skin[], co
 async function refresh(): Promise<void> {
   const { scheduler, sessionInProgressUntil, streak: rawStreak, counters: rawCounters } = await chrome.storage.local.get(['scheduler', 'sessionInProgressUntil', 'streak', 'counters']) as { scheduler?: SchedulerState; sessionInProgressUntil?: number; streak?: Partial<StreakState>; counters?: Partial<Counters> };
   const settings = { ...DEFAULT_SETTINGS, ...(await chrome.storage.sync.get(DEFAULT_SETTINGS)) } as Settings;
+  // Guards against a value from an older/foreign build this version doesn't recognize
+  // (e.g. a stale 'bean' left over from before the Buggy rename) — falls back to the
+  // default rather than leaving every character button unhighlighted and the tagline
+  // naming a character that no longer exists. content.ts guards the same way in
+  // getCharacter(); this is the popup's own read of the same storage key.
+  if (!CHARACTER_REGISTRY.some((d) => d.id === settings.character)) settings.character = DEFAULT_SETTINGS.character;
   const lang: Lang = settings.language;
   const c = COPY[lang];
   document.documentElement.lang = lang;
+  const charName = CHARACTER_REGISTRY.find((d) => d.id === settings.character)?.label[lang] ?? settings.character;
 
-  tagline.textContent = c.tagline;
+  tagline.textContent = c.tagline(charName);
   breakLabel.textContent = c.bodyThanks;
   breaksLabel.textContent = c.breaksToday;
+  screenTimeLabel.textContent = c.screenTimeToday;
   cocoaLink.textContent = c.cocoa;
   // Read straight from the manifest so this can't drift from the shipped version again.
   versionLabel.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -155,6 +168,11 @@ async function refresh(): Promise<void> {
   streakHelp.setAttribute('aria-label', c.streakHelp);
   streakHelp.title = c.streakHelpText;
   langButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.lang === lang));
+  characterButtons.forEach((btn) => {
+    const def = CHARACTER_REGISTRY.find((d) => d.id === btn.dataset.character);
+    btn.textContent = def?.label[lang] ?? '';
+    btn.classList.toggle('active', btn.dataset.character === settings.character);
+  });
 
   // Streak/skins are independent of the schedule state (on/off/focus) and every
   // early-return branch below, so render them before any of those returns.
@@ -181,6 +199,14 @@ async function refresh(): Promise<void> {
   // also turning over) — pre-settling here would let a cross-midnight roll discard
   // whatever got folded into the wrong (old) day's total; see its own comment.
   const counters = rollCounters(normalizeCounters(rawCounters), localDateStr(now), now.getTime());
+  // Live, not just what's settled in storage — a segment still running (the ordinary
+  // case whenever this popup is open) contributes its elapsed time too, same as the
+  // countdown below recomputes from nextBreakAt every tick rather than waiting for a
+  // background write.
+  const screenMs = screenMsSoFar(counters, now.getTime());
+  const screenHours = Math.floor(screenMs / 3_600_000);
+  const screenMinutes = Math.floor((screenMs % 3_600_000) / 60_000);
+  screenTime.textContent = screenHours > 0 ? `${screenHours}h ${screenMinutes}m` : `${screenMinutes}m`;
   // Stored unlocks UNIONED with whatever the counters already qualify for — see
   // effectiveUnlocked for why the stored list alone isn't enough.
   const unlocked = effectiveUnlocked(streak.unlockedSkins, streak.currentStreak, counters);
@@ -204,7 +230,7 @@ async function refresh(): Promise<void> {
   // the content script applies when rendering the ghost.
   const effectiveSkin: Skin =
     settings.skin !== 'none' && unlocked.includes(settings.skin) ? settings.skin : 'none';
-  renderSkinRow(lang, effectiveSkin, unlocked, counters, now);
+  renderSkinRow(lang, effectiveSkin, unlocked, counters, now, charName);
 
   const focusActive = Boolean(settings.focusUntil && settings.focusUntil > Date.now());
   focusBtn.textContent = focusActive ? c.focusOff : c.focusOn;
@@ -265,6 +291,12 @@ resetBtn.addEventListener('click', async () => {
 langButtons.forEach((btn) => {
   btn.addEventListener('click', async () => {
     await chrome.storage.sync.set({ language: btn.dataset.lang as Lang });
+    await refresh();
+  });
+});
+characterButtons.forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    await chrome.storage.sync.set({ character: btn.dataset.character as Character });
     await refresh();
   });
 });

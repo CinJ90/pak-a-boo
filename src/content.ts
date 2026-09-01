@@ -2,9 +2,9 @@ import exercises from './exercises.json';
 // Type-only — erased at compile time. The content script is built as a standalone IIFE
 // (vite.content.config.ts) so VALUE imports are inlined rather than emitted as ES
 // module imports, which Chrome cannot load in an injected content script.
-import type { Settings } from './types';
-import { localDateStr } from './types';
-import { GHOST_SVG, GHOST_RIG_STYLE, OUT, TEXT, MUTED, LABEL, ACCENT, BUTTER, CARD, TRACK, DOT, SKIP_BORDER, CLOSE_X, TIP_BG } from './ghost';
+import type { Character, Settings } from './types';
+import { CHARACTER_REGISTRY, localDateStr } from './types';
+import { CHARACTER_RIGS, OUT, TEXT, MUTED, LABEL, ACCENT, BUTTER, CARD, TRACK, DOT, SKIP_BORDER, CLOSE_X, TIP_BG } from './ghost';
 import { displayedSkin, effectiveUnlocked, normalizeCounters, rollCounters, skinDef, type Counters, type Skin } from './skins';
 
 type Lang = Settings['language'];
@@ -82,7 +82,7 @@ const COPY = {
   en: {
     ariaLabel: 'Let\'s take a break with the ghost',
     sit: ['Time to rest~', 'Your eyes need a break', 'Float up and stretch with me?'],
-    flop: ["Fine — napping right here until you rest", "Boo~ I'm not leaving until you break"],
+    flop: (charName: string) => ['Fine — napping right here until you rest', `${charName}~ I'm not leaving until you break`],
     bubbleStart: 'Break now!',
     bubbleSnooze: 'In 5 min',
     gaze: 'Look at something 20 feet away',
@@ -95,7 +95,7 @@ const COPY = {
     skip: 'Skip',
     next: 'Next',
     doneHeading: 'Nice work~',
-    newLook: (name: string) => `Mr.Boo learned a new look — ${name}!`,
+    newLook: (charName: string, skinName: string) => `${charName} learned a new look — ${skinName}!`,
     backToWork: 'Back to work',
     breaksToday: (n: number) => (n === 1 ? '1 break today' : `${n} breaks today`),
     nextBreak: (hhmm: string) => `next break ${hhmm}`
@@ -103,7 +103,7 @@ const COPY = {
   th: {
     ariaLabel: 'มาพักกันเถอะ',
     sit: ['พักหน่อยน้า 👀', 'ตาล้าแล้วนะ มองไกล ๆ กัน 🌿', 'ลอยมาชวนยืดเส้น~ 👻'],
-    flop: ['งั้นขอนอนตรงนี้เลยนะ zZ', 'ไม่พักไม่ไปน้า~ 👻'],
+    flop: () => ['งั้นขอนอนตรงนี้เลยนะ zZ', 'ไม่พักไม่ไปน้า~ 👻'],
     bubbleStart: 'พักเลย!',
     bubbleSnooze: 'อีก 5 นาที',
     gaze: 'มองไกล ๆ สุดสายตา 🌿',
@@ -116,7 +116,7 @@ const COPY = {
     skip: 'ข้าม',
     next: 'ถัดไป',
     doneHeading: 'เก่งมากจ้า~',
-    newLook: (name: string) => `มิสเตอร์บูได้ลุคใหม่ — ${name}!`,
+    newLook: (charName: string, skinName: string) => `${charName}ได้ลุคใหม่ — ${skinName}!`,
     backToWork: 'ทำงานต่อ',
     breaksToday: (n: number) => `พักไปแล้ว ${n} ครั้งวันนี้`,
     nextBreak: (hhmm: string) => `พักครั้งถัดไป ${hhmm}`
@@ -143,7 +143,11 @@ function stepCopy(id: string, lang: Lang): { label: string; cue: string } {
 // Styles — the rig comes from ghost.ts; only this surface's own chrome lives here.
 // ---------------------------------------------------------------------------
 
-const STYLE = `
+// A function of the active character's rig style, not a module-level const — which
+// body is worn is a stored setting, read at boot() (and re-read on a live character
+// switch, see onStorageChanged), not something fixed at build time.
+function buildStyle(rigStyle: string): string {
+  return `
   :host { all: initial; }
   /* Otherwise this fixed-position overlay — z-index 2147483647, meant to always sit on
      top of the page on screen — prints right along with the page's own content. */
@@ -151,7 +155,7 @@ const STYLE = `
   * { box-sizing: border-box; font-family: inherit; }
   .root { font-family: 'Pak-a-boo Sans', 'Pak-a-boo Sans Thai', system-ui, -apple-system, sans-serif; }
 
-${GHOST_RIG_STYLE}
+${rigStyle}
 
   @keyframes pulse { 0%, 100% { transform: scale(1.3); } 50% { transform: scale(1.6); } }
   @keyframes drift-in { from { transform: translateX(56vw) translateY(-10px); } to { transform: translateX(0) translateY(0); } }
@@ -233,6 +237,7 @@ ${GHOST_RIG_STYLE}
     background: ${BUTTER}; border: 3px solid ${OUT}; box-shadow: 0 3px 0 ${OUT}; }
   .btn-done:active { transform: translateY(3px); box-shadow: none; }
 `;
+}
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -264,6 +269,14 @@ async function getLang(): Promise<Lang> {
 async function getSkin(): Promise<Skin> {
   const { skin } = await chrome.storage.sync.get({ skin: 'none' as Skin }) as { skin: Skin };
   return skin;
+}
+
+async function getCharacter(): Promise<Character> {
+  const { character } = await chrome.storage.sync.get({ character: 'ghost' as Character }) as { character: Character };
+  // Guards against a value from a newer/foreign build this version doesn't recognize —
+  // falls back to the default rather than looking up an undefined CHARACTER_RIGS entry.
+  // hasOwn, not `in`: the latter also matches inherited keys like 'constructor'.
+  return Object.hasOwn(CHARACTER_RIGS, character) ? character : 'ghost';
 }
 
 // Stored unlocks UNIONED with what the counters already qualify for — the stored list
@@ -317,20 +330,35 @@ async function boot(): Promise<void> {
   let selectedSkin: Skin = await getSkin();
   let { unlocked: unlockedSkins, counters: skinCounters } = await getSkinState();
   const skin: Skin = displayedSkin(selectedSkin, unlockedSkins, skinCounters, new Date());
+  // Which body the rig below actually draws — Blob and Buggy wear the same skins/
+  // accessories as Ghost (see ghost.ts's CHARACTER_RIGS comment), so the data-skin
+  // attributes below apply regardless of which body this ends up being.
+  // Neither is const: a character switch (see onStorageChanged below) reassigns both
+  // and patches the DOM in place — swapped rather than rebuilt via boot(), so that
+  // whatever is currently ON SCREEN (mid-escalation peek/sit/flop, or an active break
+  // session) keeps showing, just wearing the new body, instead of vanishing back to
+  // 'hidden' until the next scheduled break. See applyCharacter's own comment for why
+  // an earlier version (a plain reboot on character change) lost exactly that.
+  // `character` itself has to stay live too, not just `rig` — the done card's "X
+  // learned a new look" celebration (see endSession) names whichever character is
+  // ACTUALLY on screen at that moment, and a stale value here would keep naming
+  // whoever was selected at boot no matter how many times it's since been switched.
+  let character: Character = await getCharacter();
+  let rig = CHARACTER_RIGS[character];
 
   const host = document.createElement('div');
   host.id = 'pak-a-boo-host';
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.innerHTML = `
-    <style>${STYLE}</style>
+    <style id="rig-style">${buildStyle(rig.style)}</style>
     <div class="root" data-stage="hidden">
       <div class="mascot" role="button" tabindex="0">
         <div class="bubble mascot-bubble"></div>
-        <div class="mascot-pose" data-skin="${skin}">${GHOST_SVG}</div>
+        <div class="mascot-pose" data-skin="${skin}">${rig.svg}</div>
       </div>
       <div class="flopper" role="button" tabindex="0">
         <div class="bubble flop-bubble"></div>
-        <div class="flop-walk"><div class="pose-flop" data-skin="${skin}">${GHOST_SVG}</div></div>
+        <div class="flop-walk"><div class="pose-flop" data-skin="${skin}">${rig.svg}</div></div>
       </div>
       <div class="session">
         <div class="session-head">
@@ -354,7 +382,7 @@ async function boot(): Promise<void> {
           </div>
         </div>
         <div class="session-done-body">
-          <div class="done-ghost"><div class="pose-happy" data-skin="${skin}">${GHOST_SVG}</div></div>
+          <div class="done-ghost"><div class="pose-happy" data-skin="${skin}">${rig.svg}</div></div>
           <div>
             <div class="done-th"></div>
             <div class="done-new"></div>
@@ -366,6 +394,7 @@ async function boot(): Promise<void> {
     </div>`;
   document.documentElement.append(host);
 
+  const rigStyleEl = shadow.querySelector('#rig-style') as HTMLStyleElement;
   const root = shadow.querySelector('.root') as HTMLElement;
   const mascot = shadow.querySelector('.mascot') as HTMLElement;
   const mascotPose = shadow.querySelector('.mascot-pose') as HTMLElement;
@@ -425,6 +454,45 @@ async function boot(): Promise<void> {
     applySkin(displayedSkin(selectedSkin, unlockedSkins, skinCounters, now));
   }
 
+  // Live character switch — swaps the rig's <style> text and every ghost's SVG content
+  // in place rather than rebooting this whole content script (an earlier version just
+  // called boot() again on a character change). A reboot resets `.root`'s stage back to
+  // 'hidden' and drops the live escalation timers, so a peek/sit/flop — or an
+  // in-progress break session — already on screen would silently vanish and not come
+  // back until the next scheduled break, instead of just changing costume in place.
+  // data-skin on each wrapper is untouched (only their SVG children are replaced), so
+  // this can't disturb applySkin's own celebrating-skin bookkeeping on doneGhost.
+  function applyCharacter(next: Character): void {
+    character = next;
+    rig = CHARACTER_RIGS[next];
+    rigStyleEl.textContent = buildStyle(rig.style);
+    mascotPose.innerHTML = rig.svg;
+    flopPose.innerHTML = rig.svg;
+    doneGhost.innerHTML = rig.svg;
+    // The session stage only has content while a break is in progress (or just
+    // finished) — same guard applySkin uses for this same element — and needs its
+    // current pose class carried over, not reset to idle.
+    if (stageEl.firstElementChild) {
+      const current = stageEl.firstElementChild as HTMLElement;
+      const stageSkin = current.dataset.skin ?? currentSkin;
+      stageEl.innerHTML = `<div class="${current.className}" data-skin="${stageSkin}">${rig.svg}</div>`;
+    }
+    // The done card's own celebration/summary text names whoever's on screen too (see
+    // renderDoneText) — re-render it here or a switch mid-celebration leaves it naming
+    // whoever was equipped when the break ended. Same for the flop bubble's "I'm not
+    // leaving" line — the language-change handler already rerenders both of these; a
+    // character switch needs the identical treatment.
+    if (session.classList.contains('done')) renderDoneText();
+    if (root.dataset.stage === 'flop') renderFlopBubble();
+  }
+
+  // The display name of whoever's actually on screen right now, in the active
+  // language — read live off `character` so every bit of copy that names the ghost
+  // (flop bubble, done-card celebration) renames itself the instant applyCharacter runs.
+  function charName(): string {
+    return CHARACTER_REGISTRY.find((d) => d.id === character)?.label[lang] ?? character;
+  }
+
   const RING_C = 2 * Math.PI * 26;
   ringFg.style.strokeDasharray = String(RING_C);
 
@@ -436,6 +504,13 @@ async function boot(): Promise<void> {
   let dueT: ReturnType<typeof setTimeout> | undefined;
   let stepTimer: ReturnType<typeof setInterval> | undefined;
   let sessionActive = false;
+  // The done card's own numbers, kept around (not just written into doneNew/doneSub
+  // once) so a live language or character switch while it's still on screen — it sits
+  // for up to 8s (see doneT) — can re-render the same facts in the new language/name
+  // instead of leaving them frozen in whatever was active the moment the break ended.
+  let doneFreshSkin: Skin | null = null;
+  let doneBreaksToday: number | null = null;
+  let doneNextBreakAt: number | null = null;
   // Flips once teardown runs (see window.__pakABooTeardown below). An in-flight
   // CONTENT_READY round-trip started before teardown can still resolve after it — this
   // stops its callback from calling armDueTimer() and re-creating dueT, which nothing
@@ -488,7 +563,7 @@ async function boot(): Promise<void> {
 
   function renderFlopBubble(): void {
     const c = COPY[lang];
-    flopBubble.innerHTML = bubbleHtml(pick(c.flop), c.bubbleStart, c.bubbleSnooze);
+    flopBubble.innerHTML = bubbleHtml(pick(c.flop(charName())), c.bubbleStart, c.bubbleSnooze);
   }
 
   function showPeek(kind: BreakKind): void {
@@ -565,7 +640,7 @@ async function boot(): Promise<void> {
   let stepIndex = 0;
 
   function renderPose(pose: string): void {
-    stageEl.innerHTML = `<div class="pose-${pose}" data-skin="${currentSkin}">${GHOST_SVG}</div>`;
+    stageEl.innerHTML = `<div class="pose-${pose}" data-skin="${currentSkin}">${rig.svg}</div>`;
   }
 
   function renderDots(): void {
@@ -614,6 +689,9 @@ async function boot(): Promise<void> {
     // applySkin() then refuses to ever touch doneGhost again for the rest of the tab's
     // life, freezing every future done card on whatever skin was last celebrated.
     doneNew.textContent = '';
+    doneFreshSkin = null;
+    doneBreaksToday = null;
+    doneNextBreakAt = null;
     celebrating = false;
     doneGhost.dataset.skin = currentSkin;
     setStage('hidden');
@@ -635,8 +713,32 @@ async function boot(): Promise<void> {
     if (doneT) clearTimeout(doneT);
     session.classList.remove('on', 'done');
     doneNew.textContent = '';
+    doneFreshSkin = null;
+    doneBreaksToday = null;
+    doneNextBreakAt = null;
     celebrating = false;
     doneGhost.dataset.skin = currentSkin; // drop the celebration override
+  }
+
+  // Rebuilds the done card's text from doneFreshSkin/doneBreaksToday/doneNextBreakAt —
+  // the facts behind it, not the strings themselves — so it can be called again from a
+  // live language or character switch (see onStorageChanged/applyCharacter) and pick up
+  // whichever is current, instead of only ever running once when the break ends.
+  function renderDoneText(): void {
+    const c = COPY[lang];
+    if (doneFreshSkin) {
+      const name = charName();
+      doneNew.textContent = c.newLook(name, skinDef(doneFreshSkin)?.label[lang](name) ?? doneFreshSkin);
+    } else {
+      doneNew.textContent = '';
+    }
+    const parts: string[] = [];
+    if (doneBreaksToday !== null) parts.push(c.breaksToday(doneBreaksToday));
+    if (doneNextBreakAt !== null) {
+      const t = new Date(doneNextBreakAt);
+      parts.push(c.nextBreak(`${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`));
+    }
+    doneSub.textContent = parts.join(' · ');
   }
 
   function endSession(completed: boolean): void {
@@ -660,7 +762,6 @@ async function boot(): Promise<void> {
       // of a late alarm.
       armDueTimer(response?.nextBreakAt);
       if (!completed) return;
-      const c = COPY[lang];
       // A just-earned skin is worn by the done-card ghost immediately, ahead of
       // whatever's selected — this is the reveal, and for behaviour/event looks it is
       // the ONLY reveal, since they never appear as a button. The background queues
@@ -668,21 +769,15 @@ async function boot(): Promise<void> {
       // to show here — any backlog drains one completed break at a time.
       const unlockedNow = Array.isArray(response?.unlocked) ? (response.unlocked as Skin[]) : [];
       const fresh = unlockedNow[0];
+      doneFreshSkin = fresh ?? null;
+      doneBreaksToday = typeof response?.breaksToday === 'number' ? response.breaksToday : null;
+      doneNextBreakAt = typeof response?.nextBreakAt === 'number' ? response.nextBreakAt : null;
       if (fresh) {
         unlockedSkins = [...unlockedSkins, ...unlockedNow];
         celebrating = true;
         doneGhost.dataset.skin = fresh;
-        doneNew.textContent = c.newLook(skinDef(fresh)?.label[lang] ?? fresh);
-      } else {
-        doneNew.textContent = '';
       }
-      const parts: string[] = [];
-      if (typeof response?.breaksToday === 'number') parts.push(c.breaksToday(response.breaksToday));
-      if (typeof response?.nextBreakAt === 'number') {
-        const t = new Date(response.nextBreakAt);
-        parts.push(c.nextBreak(`${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`));
-      }
-      doneSub.textContent = parts.join(' · ');
+      renderDoneText();
     });
     if (!completed) { hideSession(); return; }
     session.classList.add('done');
@@ -765,6 +860,7 @@ async function boot(): Promise<void> {
           renderKicker();
           if (sessionActive) renderStepText();
         }
+        if (session.classList.contains('done')) renderDoneText();
       }
     }
     if (changes.skin) {
@@ -772,6 +868,11 @@ async function boot(): Promise<void> {
       // so open tabs don't keep wearing a deselected accessory until reload.
       selectedSkin = (changes.skin.newValue as Skin | undefined) ?? 'none';
       refreshSkin();
+    }
+    if (changes.character) {
+      // A removed key (sync cleared) falls back to 'ghost', same guard as getCharacter().
+      const next = changes.character.newValue as Character | undefined;
+      applyCharacter(next && Object.hasOwn(CHARACTER_RIGS, next) ? next : 'ghost');
     }
   }
   chrome.storage.onChanged.addListener(onStorageChanged);

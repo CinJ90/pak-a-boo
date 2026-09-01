@@ -6,6 +6,23 @@ export type BreakKind = 'micro' | 'big';
 export type { Skin } from './skins';
 import type { Skin } from './skins';
 
+// Which body the mascot wears — orthogonal to Skin (an accessory worn ON a body).
+// Blob and Buggy are alternate characters ported from the design project's
+// Blob.dc.html/Cat.dc.html ("Buggy" is that design's own name for the calico drawn in
+// Cat.dc.html); they share Boo's 17-pose rig (see ghost.ts's CHARACTER_RIGS) and wear
+// the same accessories, each via its own placement transform (see ghost.ts's
+// skinAccessoryLayers()).
+export type Character = 'ghost' | 'blob' | 'buggy';
+
+export interface CharacterDef { id: Character; label: { en: string; th: string } }
+// Display order for the popup's character switcher. No unlock condition — unlike skins,
+// every character is available from install.
+export const CHARACTER_REGISTRY: CharacterDef[] = [
+  { id: 'ghost', label: { en: 'Mr.Boo', th: 'มิสเตอร์บู' } },
+  { id: 'blob', label: { en: 'Blob', th: 'บล็อบ' } },
+  { id: 'buggy', label: { en: 'Buggy', th: 'บักกี้' } }
+];
+
 export interface Settings {
   microMinutes: number;
   bigMinutes: number;
@@ -15,6 +32,7 @@ export interface Settings {
   enabled: boolean;
   language: 'en' | 'th';
   skin: Skin;
+  character: Character;
 }
 
 export interface SchedulerState {
@@ -69,7 +87,8 @@ export const DEFAULT_SETTINGS: Settings = {
   focusUntil: null,
   enabled: true,
   language: 'en',
-  skin: 'none'
+  skin: 'none',
+  character: 'ghost'
 };
 
 // The streak counts consecutive ACTIVE days, not calendar days. An active day is one

@@ -16,6 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import { SKIN_REGISTRY, type Skin } from './skins';
+import type { Character } from './types';
 
 // Palette — cool sage/teal, chosen for relaxation and eye rest (green sits at the peak
 // of human eye sensitivity and reads as calm rather than the old warm coral/cocoa theme).
@@ -58,71 +59,27 @@ const CAT = '#F0964B';
 const CAT_STRIPE = '#D97A2E';
 const LOTUS = '#F6C8D8';
 
-// Every accessory lives in its own <g class="skin-…"> hidden by default and shown by
-// the wrapper's data-skin. Motion is inline (transform-origin + animation) exactly as
-// designed; the keyframes are in GHOST_RIG_STYLE.
-export const GHOST_SVG = `
-<svg class="ghost" viewBox="0 0 200 214" aria-hidden="true">
-  <g class="window-scene">
-    <rect x="16" y="-6" width="168" height="176" rx="16" fill="${SKY}" stroke="${OUT}" stroke-width="5.5"/>
-    <g class="clouds">
-      <ellipse cx="70" cy="40" rx="19" ry="10" fill="${CARD}" opacity=".95"/>
-      <ellipse cx="86" cy="35" rx="12" ry="8" fill="${CARD}" opacity=".95"/>
-      <ellipse cx="132" cy="72" rx="14" ry="7.5" fill="${CARD}" opacity=".75"/>
-    </g>
-    <path d="M40 0 V166 M160 0 V166" stroke="${OUT}" stroke-width="4.5" opacity=".7"/>
-  </g>
-  <ellipse class="gshadow" cx="100" cy="198" rx="38" ry="6" fill="${OUT}"/>
-  <g class="gbody">
-    <g class="ghead">
-      <g class="hem">
-        <path d="M106 38 C142 38 160 70 160 108 C160 134 156 154 152 168 C150 177 141 179 137 170 C133 160 124 160 120 170 C116 180 107 180 103 170 C99 160 90 160 86 170 C82 179 72 179 68 169 C64 159 55 160 50 167 C44 176 35 173 33 162 C31 148 38 126 44 110 C48 68 72 38 106 38 Z" fill="${GBODY}"/>
-        <path d="M44 110 C38 126 31 148 33 162 C35 173 44 176 50 167 C55 160 64 159 68 169 C72 179 82 179 86 170 C88 165 92 162 96 162 C72 156 54 136 50 112 Z" fill="${HEM_HL}"/>
-        <path d="M62 78 C70 60 84 50 100 48 C86 56 74 68 68 84 Z" fill="#FFFFFF"/>
-        <path d="M106 38 C142 38 160 70 160 108 C160 134 156 154 152 168 C150 177 141 179 137 170 C133 160 124 160 120 170 C116 180 107 180 103 170 C99 160 90 160 86 170 C82 179 72 179 68 169 C64 159 55 160 50 167 C44 176 35 173 33 162 C31 148 38 126 44 110 C48 68 72 38 106 38 Z" fill="none" stroke="${INK}" stroke-width="7" stroke-linejoin="round"/>
-      </g>
-      <ellipse cx="72" cy="98" rx="11" ry="7" fill="${BLUSH}" opacity=".55"/>
-      <ellipse cx="132" cy="98" rx="11" ry="7" fill="${BLUSH}" opacity=".55"/>
-      <g class="arm-l">
-        <path d="M56 120 C34 116 16 124 16 135 C16 146 34 152 56 147 Z" fill="${GBODY}"/>
-        <path d="M56 120 C34 116 16 124 16 135 C16 146 34 152 56 147" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
-      </g>
-      <g class="arm-r">
-        <path d="M146 120 C168 116 186 124 186 135 C186 146 168 152 146 147 Z" fill="${GBODY}"/>
-        <path d="M146 120 C168 116 186 124 186 135 C186 146 168 152 146 147" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
-        <g class="mug">
-          <path d="M186 128 q13 7 0 14" fill="none" stroke="${OUT}" stroke-width="5"/>
-          <rect x="154" y="120" width="34" height="32" rx="8" fill="${MUG}" stroke="${OUT}" stroke-width="5"/>
-          <rect x="159" y="127" width="23" height="7" rx="3.5" fill="${MUG_HL}"/>
-          <path class="steam" d="M162 112 q4 -7 0 -14 M179 112 q-4 -7 0 -14" fill="none" stroke="${STEAM}" stroke-width="3.5" stroke-linecap="round"/>
-        </g>
-      </g>
-      <g class="eyes">
-        <g class="eyes-open">
-          <g class="eo-in">
-            <ellipse cx="86" cy="98" rx="11" ry="14" fill="${EYE}"/>
-            <circle cx="90" cy="90" r="4.2" fill="#fff"/>
-            <circle cx="82" cy="104" r="2.4" fill="#fff" opacity=".75"/>
-            <ellipse cx="126" cy="98" rx="11" ry="14" fill="${EYE}"/>
-            <circle cx="130" cy="90" r="4.2" fill="#fff"/>
-            <circle cx="122" cy="104" r="2.4" fill="#fff" opacity=".75"/>
-          </g>
-          <g class="ec-in">
-            <path d="M75 98 Q86 107 97 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
-            <path d="M115 98 Q126 107 137 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
-          </g>
-          <path d="M97 118 Q106 128 115 118" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
-        </g>
-        <g class="eyes-happy">
-          <path d="M75 102 Q86 86 97 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
-          <path d="M115 102 Q126 86 137 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
-          <path d="M95 118 Q106 132 117 118" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
-        </g>
-        <g class="eyes-sleep">
-          <path d="M75 96 Q86 106 97 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
-          <path d="M115 96 Q126 106 137 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
-          <path d="M99 118 Q106 124 113 118" fill="none" stroke="${EYE}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>
+// Blob palette (from Blob.dc.html in the design project)
+const BLOB_BODY = '#F9C6D4';
+const BLOB_SHADE = '#E9A4B9';
+const BLOB_BLUSH = '#F09A8E';
+
+// Buggy palette (from Cat.dc.html in the design project — "Buggy" is that design's own
+// name for this cat, distinct from the unrelated "Orange Cat"/CAT skin accessory below,
+// hence the BUGGY_ prefix rather than CAT_). A grey shorthair, not a calico: patches are
+// drawn as subtle fur-texture strokes rather than solid colour blocks.
+const BUGGY_BODY = '#C9CFD4';    // coat base — ears and arms/mitts match it
+const BUGGY_SHADE = '#A7B0B7';   // coat shading sweep
+const BUGGY_MUZZLE = '#E4E9EC';  // muzzle patch + paws
+const BUGGY_FUR = '#8B959C';     // fur-texture stroke lines + tail accent marks
+const BUGGY_BLUSH = '#E0968E';
+const BUGGY_WHISKER = '#7C868D';
+const BUGGY_NOSE = '#C0928C';    // nose + ear-inner marks
+
+// Sweetheart (Valentine's): the eyes themselves become the accessory, not a worn
+// object — shared verbatim across all three rigs since eye coordinates are identical
+// on every character (see each rig's own comment on that).
+const EYES_HEART_MARKUP = `
         <!-- Sweetheart (Valentine's): the eyes themselves become the accessory. -->
         <g class="eyes-heart">
           <g style="transform-origin: 86px 99px; animation: heartpop 1.5s ease-in-out infinite;">
@@ -134,9 +91,19 @@ export const GHOST_SVG = `
             <circle cx="120" cy="94" r="2.8" fill="#FFFFFF" opacity=".85"/>
           </g>
           <path d="M96 120 Q106 131 116 120" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
-        </g>
-      </g>
+        </g>`;
 
+// Every accessory lives in its own <g class="skin-…"> hidden by default and shown by
+// the wrapper's data-skin. Motion is inline (transform-origin + animation) exactly as
+// designed; the keyframes are in GHOST_RIG_STYLE (and, for Blob/Buggy, in their own
+// RIG_STYLE — see the note by BLOB_RIG_STYLE for why they need their own copies).
+//
+// Shared verbatim across all three rigs, not just Ghost: accessories are worn on
+// whichever head is active, wrapped in a small per-character offset (see BLOB_SVG/
+// BUGGY_SVG) rather than redrawn, since redrawing 13 accessories twice over isn't worth
+// it for a first pass — see those rigs' own comments for the known fit trade-off.
+function skinAccessoryLayers(): string {
+  return `
       <!-- ── streak skins ── -->
       <g class="skin-sprout">
         <path d="M106 46 V26" fill="none" stroke="${OUT}" stroke-width="5" stroke-linecap="round"/>
@@ -264,7 +231,73 @@ export const GHOST_SVG = `
           <path d="M170 26 C176 34 176 40 170 40 C164 40 164 34 170 26 Z" style="animation: dropk 2.2s .8s ease-in infinite;"/>
           <path d="M148 8 C153 15 153 20 148 20 C143 20 143 15 148 8 Z" style="animation: dropk 2.2s 1.5s ease-in infinite;"/>
         </g>
+      </g>`;
+}
+
+export const GHOST_SVG = `
+<svg class="ghost" viewBox="0 0 200 214" aria-hidden="true">
+  <g class="window-scene">
+    <rect x="16" y="-6" width="168" height="176" rx="16" fill="${SKY}" stroke="${OUT}" stroke-width="5.5"/>
+    <g class="clouds">
+      <ellipse cx="70" cy="40" rx="19" ry="10" fill="${CARD}" opacity=".95"/>
+      <ellipse cx="86" cy="35" rx="12" ry="8" fill="${CARD}" opacity=".95"/>
+      <ellipse cx="132" cy="72" rx="14" ry="7.5" fill="${CARD}" opacity=".75"/>
+    </g>
+    <path d="M40 0 V166 M160 0 V166" stroke="${OUT}" stroke-width="4.5" opacity=".7"/>
+  </g>
+  <ellipse class="gshadow" cx="100" cy="198" rx="38" ry="6" fill="${OUT}"/>
+  <g class="gbody">
+    <g class="ghead">
+      <g class="hem">
+        <path d="M106 38 C142 38 160 70 160 108 C160 134 156 154 152 168 C150 177 141 179 137 170 C133 160 124 160 120 170 C116 180 107 180 103 170 C99 160 90 160 86 170 C82 179 72 179 68 169 C64 159 55 160 50 167 C44 176 35 173 33 162 C31 148 38 126 44 110 C48 68 72 38 106 38 Z" fill="${GBODY}"/>
+        <path d="M44 110 C38 126 31 148 33 162 C35 173 44 176 50 167 C55 160 64 159 68 169 C72 179 82 179 86 170 C88 165 92 162 96 162 C72 156 54 136 50 112 Z" fill="${HEM_HL}"/>
+        <path d="M62 78 C70 60 84 50 100 48 C86 56 74 68 68 84 Z" fill="#FFFFFF"/>
+        <path d="M106 38 C142 38 160 70 160 108 C160 134 156 154 152 168 C150 177 141 179 137 170 C133 160 124 160 120 170 C116 180 107 180 103 170 C99 160 90 160 86 170 C82 179 72 179 68 169 C64 159 55 160 50 167 C44 176 35 173 33 162 C31 148 38 126 44 110 C48 68 72 38 106 38 Z" fill="none" stroke="${INK}" stroke-width="7" stroke-linejoin="round"/>
       </g>
+      <ellipse cx="72" cy="98" rx="11" ry="7" fill="${BLUSH}" opacity=".55"/>
+      <ellipse cx="132" cy="98" rx="11" ry="7" fill="${BLUSH}" opacity=".55"/>
+      <g class="arm-l">
+        <path d="M56 120 C34 116 16 124 16 135 C16 146 34 152 56 147 Z" fill="${GBODY}"/>
+        <path d="M56 120 C34 116 16 124 16 135 C16 146 34 152 56 147" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
+      </g>
+      <g class="arm-r">
+        <path d="M146 120 C168 116 186 124 186 135 C186 146 168 152 146 147 Z" fill="${GBODY}"/>
+        <path d="M146 120 C168 116 186 124 186 135 C186 146 168 152 146 147" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
+        <g class="mug">
+          <path d="M186 128 q13 7 0 14" fill="none" stroke="${OUT}" stroke-width="5"/>
+          <rect x="154" y="120" width="34" height="32" rx="8" fill="${MUG}" stroke="${OUT}" stroke-width="5"/>
+          <rect x="159" y="127" width="23" height="7" rx="3.5" fill="${MUG_HL}"/>
+          <path class="steam" d="M162 112 q4 -7 0 -14 M179 112 q-4 -7 0 -14" fill="none" stroke="${STEAM}" stroke-width="3.5" stroke-linecap="round"/>
+        </g>
+      </g>
+      <g class="eyes">
+        <g class="eyes-open">
+          <g class="eo-in">
+            <ellipse cx="86" cy="98" rx="11" ry="14" fill="${EYE}"/>
+            <circle cx="90" cy="90" r="4.2" fill="#fff"/>
+            <circle cx="82" cy="104" r="2.4" fill="#fff" opacity=".75"/>
+            <ellipse cx="126" cy="98" rx="11" ry="14" fill="${EYE}"/>
+            <circle cx="130" cy="90" r="4.2" fill="#fff"/>
+            <circle cx="122" cy="104" r="2.4" fill="#fff" opacity=".75"/>
+          </g>
+          <g class="ec-in">
+            <path d="M75 98 Q86 107 97 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+            <path d="M115 98 Q126 107 137 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+          </g>
+          <path d="M97 118 Q106 128 115 118" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
+        </g>
+        <g class="eyes-happy">
+          <path d="M75 102 Q86 86 97 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
+          <path d="M115 102 Q126 86 137 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
+          <path d="M95 118 Q106 132 117 118" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
+        </g>
+        <g class="eyes-sleep">
+          <path d="M75 96 Q86 106 97 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+          <path d="M115 96 Q126 106 137 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+          <path d="M99 118 Q106 124 113 118" fill="none" stroke="${EYE}" stroke-width="4.5" stroke-linecap="round"/>
+        </g>${EYES_HEART_MARKUP}
+      </g>
+${skinAccessoryLayers()}
     </g>
   </g>
   <g class="wisp"><ellipse cx="26" cy="158" rx="7" ry="5" fill="${GBODY}" stroke="${INK}" stroke-width="4" opacity=".8"/></g>
@@ -333,9 +366,6 @@ export const GHOST_RIG_STYLE = `
   @keyframes bendHead { 0%, 100% { transform: rotate(0); } 14% { transform: rotate(9deg) translateX(4px); } 38% { transform: rotate(11deg) translateX(5px); } 50% { transform: rotate(0); } 64% { transform: rotate(-9deg) translateX(-4px); } 88% { transform: rotate(-11deg) translateX(-5px); } }
   @keyframes bendL { 0%, 100% { transform: rotate(14deg) scaleX(1); } 14% { transform: rotate(66deg) scaleX(1.45); } 38% { transform: rotate(72deg) scaleX(1.55); } 50% { transform: rotate(14deg) scaleX(1); } 64% { transform: rotate(-20deg) scaleX(1.05); } 88% { transform: rotate(-24deg) scaleX(1.1); } }
   @keyframes bendR { 0%, 100% { transform: rotate(-14deg) scaleX(1); } 14% { transform: rotate(20deg) scaleX(1.05); } 38% { transform: rotate(24deg) scaleX(1.1); } 50% { transform: rotate(-14deg) scaleX(1); } 64% { transform: rotate(-66deg) scaleX(1.45); } 88% { transform: rotate(-72deg) scaleX(1.55); } }
-  @keyframes clapL { 0%, 100% { transform: rotate(178deg) scaleX(1.2); } 50% { transform: rotate(182deg) scaleX(1.82); } }
-  @keyframes clapR { 0%, 100% { transform: rotate(-176deg) scaleX(1.28); } 50% { transform: rotate(-180deg) scaleX(1.9); } }
-  @keyframes wiggle { 0%, 100% { transform: rotate(-4deg) translateY(0); } 50% { transform: rotate(4deg) translateY(-4px); } }
   @keyframes sparkk { 0%, 100% { opacity: 0; transform: scale(.3) rotate(0); } 45% { opacity: 1; transform: scale(1.15) rotate(75deg); } }
   @keyframes zzzk { 0% { opacity: 0; transform: translate(0, 0) scale(.5); } 25% { opacity: 1; } 100% { opacity: 0; transform: translate(16px, -30px) scale(1.15); } }
   @keyframes clouddrift { from { transform: translateX(-14px); } to { transform: translateX(16px); } }
@@ -429,12 +459,6 @@ export const GHOST_RIG_STYLE = `
   .pose-side-bend .ghead { animation: bendHead 6s ease-in-out infinite; }
   .pose-side-bend .arm-l { transform: none; animation: bendL 6s ease-in-out infinite; }
   .pose-side-bend .arm-r { transform: none; animation: bendR 6s ease-in-out infinite; }
-  .pose-clap .arm-l { transform: none; animation: clapL .7s ease-in-out infinite; }
-  .pose-clap .arm-r { transform: none; animation: clapR .7s ease-in-out infinite; }
-  .pose-clap .gbody { animation: wiggle 1.4s ease-in-out infinite; }
-  .pose-clap .eyes-open { display: none; }
-  .pose-clap .eyes-happy { display: block; }
-  .pose-clap .sparkles { display: block; }
 
   /* ---- skins — accessories wobble independently behind the head bob so they feel
      worn rather than pasted on. Scoped to the nearest [data-skin] wrapper. ---- */
@@ -454,3 +478,481 @@ export const GHOST_RIG_STYLE = `
   [data-skin="valentine"].pose-flop .eyes-heart { display: none; }
   [data-skin="valentine"].pose-flop .eyes-sleep { display: block; }
 `;
+
+// ---------------------------------------------------------------------------
+// Blob and Buggy — alternate bodies for the same rig. Ported from Blob.dc.html /
+// Cat.dc.html in the design project ("Character Options.dc.html" compares all three
+// side by side, pose for pose — "Buggy" is that design's own name for the calico drawn
+// in Cat.dc.html). Same 17 poses, same eye states, same window/mug/sparkle/zzz/ledge
+// dressing as Ghost — only the silhouette and its own keyframe geometry change (Buggy
+// additionally has ears, a tail and whiskers, and a nose drawn into its eyes group).
+// Accessories are Ghost's own layers (skinAccessoryLayers(), shared — see its own
+// comment) worn via a per-character offset rather than redrawn; the design project
+// itself never spec'd where they'd sit on these two ("Neither has skins yet — say the
+// word and I'll port the 19 head accessories onto the winner"), so the offsets below are
+// this build's own placement pass, not a ported design.
+//
+// Pose numbers (rotation angles, durations) come from the shared pose table in
+// Character Options.dc.html, not from Ghost's own hand-tuned CSS — Ghost deviates
+// slightly from that table in a couple of spots (its arm rest angle, its "stand" angle)
+// as its own separate polish pass; Blob/Buggy follow the table as designed since no such
+// pass exists for them yet.
+// ---------------------------------------------------------------------------
+
+export const BLOB_SVG = `
+<svg class="ghost" viewBox="0 0 200 214" aria-hidden="true">
+  <g class="window-scene">
+    <rect x="16" y="-6" width="168" height="176" rx="16" fill="${SKY}" stroke="${OUT}" stroke-width="5.5"/>
+    <g class="clouds">
+      <ellipse cx="70" cy="40" rx="19" ry="10" fill="${CARD}" opacity=".95"/>
+      <ellipse cx="86" cy="35" rx="12" ry="8" fill="${CARD}" opacity=".95"/>
+      <ellipse cx="132" cy="72" rx="14" ry="7.5" fill="${CARD}" opacity=".75"/>
+    </g>
+    <path d="M40 0 V166 M160 0 V166" stroke="${OUT}" stroke-width="4.5" opacity=".7"/>
+  </g>
+  <ellipse class="gshadow" cx="100" cy="198" rx="44" ry="6" fill="${OUT}"/>
+  <g class="gbody">
+    <g class="ghead">
+      <g class="blob-shape">
+        <path d="M100 48 C148 48 178 94 178 142 C178 176 152 190 100 190 C48 190 22 176 22 142 C22 94 52 48 100 48 Z" fill="${BLOB_BODY}"/>
+        <path d="M22 142 C22 176 48 190 100 190 C128 190 150 185 164 176 C124 172 62 158 46 118 Z" fill="${BLOB_SHADE}"/>
+        <ellipse class="blob-glow" cx="70" cy="82" rx="20" ry="12" fill="#FFFFFF" opacity=".55"/>
+        <path d="M100 48 C148 48 178 94 178 142 C178 176 152 190 100 190 C48 190 22 176 22 142 C22 94 52 48 100 48 Z" fill="none" stroke="${INK}" stroke-width="8" stroke-linejoin="round"/>
+      </g>
+      <ellipse cx="62" cy="136" rx="12" ry="7" fill="${BLOB_BLUSH}" opacity=".7"/>
+      <ellipse cx="138" cy="136" rx="12" ry="7" fill="${BLOB_BLUSH}" opacity=".7"/>
+      <g class="arm-l">
+        <path d="M52 120 C32 117 8 125 8 135 C8 146 32 151 52 147 Z" fill="${BLOB_BODY}"/>
+        <path d="M52 120 C32 117 8 125 8 135 C8 146 32 151 52 147" fill="none" stroke="${INK}" stroke-width="8" stroke-linecap="round"/>
+      </g>
+      <g class="arm-r">
+        <path d="M148 120 C168 117 192 125 192 135 C192 146 168 151 148 147 Z" fill="${BLOB_BODY}"/>
+        <path d="M148 120 C168 117 192 125 192 135 C192 146 168 151 148 147" fill="none" stroke="${INK}" stroke-width="8" stroke-linecap="round"/>
+        <g class="mug">
+          <path d="M186 128 q13 7 0 14" fill="none" stroke="${OUT}" stroke-width="5"/>
+          <rect x="154" y="120" width="34" height="32" rx="8" fill="${MUG}" stroke="${OUT}" stroke-width="5"/>
+          <rect x="159" y="127" width="23" height="7" rx="3.5" fill="${MUG_HL}"/>
+          <path class="steam" d="M162 112 q4 -7 0 -14 M179 112 q-4 -7 0 -14" fill="none" stroke="${STEAM}" stroke-width="3.5" stroke-linecap="round"/>
+        </g>
+      </g>
+      <g style="transform: translate(-6px, 30px);">
+        <g class="eyes">
+          <g class="eyes-open">
+            <g class="eo-in">
+              <ellipse cx="86" cy="98" rx="11" ry="14" fill="${EYE}"/>
+              <circle cx="90" cy="90" r="4.2" fill="#fff"/>
+              <circle cx="82" cy="104" r="2.4" fill="#fff" opacity=".75"/>
+              <ellipse cx="126" cy="98" rx="11" ry="14" fill="${EYE}"/>
+              <circle cx="130" cy="90" r="4.2" fill="#fff"/>
+              <circle cx="122" cy="104" r="2.4" fill="#fff" opacity=".75"/>
+            </g>
+            <g class="ec-in">
+              <path d="M75 98 Q86 107 97 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+              <path d="M115 98 Q126 107 137 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+            </g>
+            <path d="M97 118 Q106 128 115 118" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
+          </g>
+          <g class="eyes-happy">
+            <path d="M75 102 Q86 86 97 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
+            <path d="M115 102 Q126 86 137 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
+            <path d="M95 118 Q106 132 117 118" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
+          </g>
+          <g class="eyes-sleep">
+            <path d="M75 96 Q86 106 97 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+            <path d="M115 96 Q126 106 137 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+            <path d="M99 118 Q106 124 113 118" fill="none" stroke="${EYE}" stroke-width="4.5" stroke-linecap="round"/>
+          </g>${EYES_HEART_MARKUP}
+        </g>
+      </g>
+      <!-- Accessories are Ghost's, worn here via the design project's own composed
+           transform (translate to Blob's head center, scale to its head size, translate
+           back from Ghost's own head-center pivot) rather than redrawn — this is
+           Blob.dc.html's real placement, not a guess. -->
+      <g transform="translate(100 46) scale(0.94) translate(-106 -38)">
+${skinAccessoryLayers()}
+      </g>
+    </g>
+  </g>
+  <rect class="sill" x="6" y="182" width="188" height="20" rx="10" fill="${SILL}" stroke="${OUT}" stroke-width="5"/>
+  <path class="ledge" d="M-14 156 H214 V220 H-14 Z" fill="${TRACK}" stroke="${OUT}" stroke-width="5"/>
+  <g class="sparkles" fill="${GOLD}" stroke="${OUT}" stroke-width="2">
+    <path class="sp1" d="M26 62 l5 11 11 5 -11 5 -5 11 -5 -11 -11 -5 11 -5 Z"/>
+    <path class="sp2" d="M172 42 l4 9 9 4 -9 4 -4 9 -4 -9 -9 -4 9 -4 Z"/>
+    <path class="sp3" d="M166 132 l3.5 8 8 3.5 -8 3.5 -3.5 8 -3.5 -8 -8 -3.5 8 -3.5 Z"/>
+  </g>
+  <g class="zzz" fill="${MUTED}" font-family="'Pak-a-boo Sans', sans-serif" font-weight="800">
+    <text class="z1" x="150" y="120" font-size="18">z</text>
+    <text class="z2" x="150" y="120" font-size="14">z</text>
+  </g>
+</svg>`;
+
+export const BUGGY_SVG = `
+<svg class="ghost" viewBox="0 0 200 214" aria-hidden="true">
+  <defs>
+    <!-- The muzzle patch and fur-texture strokes below are drawn a little larger than
+         the head outline (same as the design file) and clipped here so their edges
+         don't poke past the outline stroke. This id is duplicated once per ghost
+         instance rendered into one shadow root (mascot/flop/done-card/session-stage all
+         inject this same markup) — harmless since every copy clips an identical shape
+         at identical coordinates, so whichever one a given clip-path resolves to
+         produces the same result. -->
+    <clipPath id="buggycoat"><path d="M100 50 C148 50 176 88 176 130 C176 168 148 186 100 186 C52 186 24 168 24 130 C24 88 52 50 100 50 Z"/></clipPath>
+  </defs>
+  <g class="window-scene">
+    <rect x="16" y="-6" width="168" height="176" rx="16" fill="${SKY}" stroke="${OUT}" stroke-width="5.5"/>
+    <g class="clouds">
+      <ellipse cx="70" cy="40" rx="19" ry="10" fill="${CARD}" opacity=".95"/>
+      <ellipse cx="86" cy="35" rx="12" ry="8" fill="${CARD}" opacity=".95"/>
+      <ellipse cx="132" cy="72" rx="14" ry="7.5" fill="${CARD}" opacity=".75"/>
+    </g>
+    <path d="M40 0 V166 M160 0 V166" stroke="${OUT}" stroke-width="4.5" opacity=".7"/>
+  </g>
+  <ellipse class="gshadow" cx="100" cy="198" rx="44" ry="6" fill="${OUT}"/>
+  <g class="gbody">
+    <g class="ghead">
+      <g class="buggy-shape">
+        <g class="tail">
+          <path d="M166 132 C192 130 198 158 186 174 C180 182 170 180 168 172" fill="none" stroke="${INK}" stroke-width="19" stroke-linecap="round"/>
+          <path d="M166 132 C192 130 198 158 186 174 C180 182 170 180 168 172" fill="none" stroke="${BUGGY_BODY}" stroke-width="10" stroke-linecap="round"/>
+          <path d="M186 143 L193 147 M191 163 L196 158" fill="none" stroke="${BUGGY_FUR}" stroke-width="6" stroke-linecap="round"/>
+        </g>
+        <path d="M60 70 C56 56 58 46 66 44 C76 43 84 52 88 62 Z" fill="${BUGGY_BODY}" stroke="${INK}" stroke-width="7" stroke-linejoin="round"/>
+        <path d="M140 70 C144 56 142 46 134 44 C124 43 116 52 112 62 Z" fill="${BUGGY_BODY}" stroke="${INK}" stroke-width="7" stroke-linejoin="round"/>
+        <path d="M68 64 C64 57 65 52 69 50" fill="none" stroke="${BUGGY_NOSE}" stroke-width="5" stroke-linecap="round"/>
+        <path d="M132 64 C136 57 135 52 131 50" fill="none" stroke="${BUGGY_NOSE}" stroke-width="5" stroke-linecap="round"/>
+        <path d="M100 50 C148 50 176 88 176 130 C176 168 148 186 100 186 C52 186 24 168 24 130 C24 88 52 50 100 50 Z" fill="${BUGGY_BODY}"/>
+        <path d="M24 130 C24 168 52 186 100 186 C124 186 146 181 158 172 C112 166 52 152 40 106 Z" fill="${BUGGY_SHADE}"/>
+        <g clip-path="url(#buggycoat)">
+          <path d="M100 154 C126 154 144 166 144 178 C144 184 128 188 100 188 C72 188 56 184 56 178 C56 166 74 154 100 154 Z" fill="${BUGGY_MUZZLE}"/>
+          <g fill="none" stroke="${BUGGY_FUR}" stroke-width="7" stroke-linecap="round" opacity=".9">
+            <path d="M76 88 C80 76 86 68 94 62"/>
+            <path d="M100 78 C104 68 110 62 118 58"/>
+            <path d="M124 86 C130 76 137 70 146 66"/>
+            <path d="M46 118 C56 112 64 112 70 116"/>
+            <path d="M154 118 C144 112 136 112 130 116"/>
+          </g>
+        </g>
+        <path d="M60 80 C68 68 78 62 90 60 C78 70 70 80 66 94 Z" fill="#FFFFFF" opacity=".22"/>
+        <path d="M100 50 C148 50 176 88 176 130 C176 168 148 186 100 186 C52 186 24 168 24 130 C24 88 52 50 100 50 Z" fill="none" stroke="${INK}" stroke-width="8" stroke-linejoin="round"/>
+        <ellipse cx="80" cy="180" rx="15" ry="9" fill="${BUGGY_MUZZLE}" stroke="${INK}" stroke-width="6"/>
+        <ellipse cx="120" cy="180" rx="15" ry="9" fill="${BUGGY_MUZZLE}" stroke="${INK}" stroke-width="6"/>
+      </g>
+      <g class="arm-l">
+        <path d="M50 134 C30 131 8 139 8 149 C8 160 30 165 50 161 Z" fill="${BUGGY_BODY}"/>
+        <path d="M50 134 C30 131 8 139 8 149 C8 160 30 165 50 161" fill="none" stroke="${INK}" stroke-width="8" stroke-linecap="round"/>
+      </g>
+      <g class="arm-r">
+        <path d="M150 134 C170 131 192 139 192 149 C192 160 170 165 150 161 Z" fill="${BUGGY_BODY}"/>
+        <path d="M150 134 C170 131 192 139 192 149 C192 160 170 165 150 161" fill="none" stroke="${INK}" stroke-width="8" stroke-linecap="round"/>
+        <g class="mug">
+          <path d="M186 128 q13 7 0 14" fill="none" stroke="${OUT}" stroke-width="5"/>
+          <rect x="154" y="120" width="34" height="32" rx="8" fill="${MUG}" stroke="${OUT}" stroke-width="5"/>
+          <rect x="159" y="127" width="23" height="7" rx="3.5" fill="${MUG_HL}"/>
+          <path class="steam" d="M162 112 q4 -7 0 -14 M179 112 q-4 -7 0 -14" fill="none" stroke="${STEAM}" stroke-width="3.5" stroke-linecap="round"/>
+        </g>
+      </g>
+      <g style="transform: translate(-6px, 24px);">
+        <!-- Blush/whiskers/nose sit outside .eyes on purpose — only .eyes (the pupil
+             states) gets the peek/window gaze-shift transform in commonPoseRules(), same
+             as the design's own nesting (pose.eyesT wraps just the eye states). -->
+        <ellipse cx="64" cy="130" rx="12" ry="7" fill="${BUGGY_BLUSH}" opacity=".45"/>
+        <ellipse cx="136" cy="130" rx="12" ry="7" fill="${BUGGY_BLUSH}" opacity=".45"/>
+        <g class="whiskers" stroke="${BUGGY_WHISKER}" stroke-width="3" stroke-linecap="round" fill="none" opacity=".9">
+          <path d="M48 120 L14 112 M48 128 L12 132"/>
+          <path d="M164 120 L198 112 M164 128 L200 132"/>
+        </g>
+        <path class="nose" d="M100 106 L112 106 L106 114 Z" fill="${BUGGY_NOSE}" stroke-linejoin="round"/>
+        <!-- The mouth is its own set of sibling groups (sharing the eyes-open/happy/
+             sleep/heart class names, so the same pose CSS shows/hides both) rather than
+             nested inside .eyes — the nose stays fixed during peek/window (see the note
+             above), and a mouth that shifted with the pupils while the nose didn't would
+             visibly detach from it by the same few pixels those poses move .eyes. -->
+        <g class="eyes-open">
+          <path d="M106 114 L106 120 M106 120 Q97 129 88 121 M106 120 Q115 129 124 121" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
+        </g>
+        <g class="eyes-happy">
+          <path d="M106 114 L106 121 M106 121 Q95 133 85 122 M106 121 Q117 133 127 122" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
+        </g>
+        <g class="eyes-sleep">
+          <path d="M106 114 L106 119 M106 119 Q99 125 92 120 M106 119 Q113 125 120 120" fill="none" stroke="${EYE}" stroke-width="4.5" stroke-linecap="round"/>
+        </g>
+        <g class="eyes-heart">
+          <path d="M106 116 L106 122 M106 122 Q95 134 85 123 M106 122 Q117 134 127 123" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
+        </g>
+        <g class="eyes">
+          <g class="eyes-open">
+            <g class="eo-in">
+              <ellipse cx="86" cy="98" rx="11" ry="14" fill="${EYE}"/>
+              <circle cx="90" cy="90" r="4.2" fill="#fff"/>
+              <circle cx="82" cy="104" r="2.4" fill="#fff" opacity=".75"/>
+              <ellipse cx="126" cy="98" rx="11" ry="14" fill="${EYE}"/>
+              <circle cx="130" cy="90" r="4.2" fill="#fff"/>
+              <circle cx="122" cy="104" r="2.4" fill="#fff" opacity=".75"/>
+            </g>
+            <g class="ec-in">
+              <path d="M75 98 Q86 107 97 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+              <path d="M115 98 Q126 107 137 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+            </g>
+          </g>
+          <g class="eyes-happy">
+            <path d="M75 102 Q86 86 97 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
+            <path d="M115 102 Q126 86 137 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
+          </g>
+          <g class="eyes-sleep">
+            <path d="M75 96 Q86 106 97 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+            <path d="M115 96 Q126 106 137 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+          </g>
+          <!-- Buggy's own eyes-heart, not the shared EYES_HEART_MARKUP — same heart
+               shapes, but with Buggy's cat-mouth line (above) instead of the plain arc. -->
+          <g class="eyes-heart">
+            <g style="transform-origin: 86px 99px; animation: heartpop 1.5s ease-in-out infinite;">
+              <path d="M86 112 C70 100 74 83 86 93 C98 83 102 100 86 112 Z" fill="${HEART}" stroke="${EYE}" stroke-width="4.5" stroke-linejoin="round"/>
+              <circle cx="80" cy="94" r="2.8" fill="#FFFFFF" opacity=".85"/>
+            </g>
+            <g style="transform-origin: 126px 99px; animation: heartpop 1.5s .3s ease-in-out infinite;">
+              <path d="M126 112 C110 100 114 83 126 93 C138 83 142 100 126 112 Z" fill="${HEART}" stroke="${EYE}" stroke-width="4.5" stroke-linejoin="round"/>
+              <circle cx="120" cy="94" r="2.8" fill="#FFFFFF" opacity=".85"/>
+            </g>
+          </g>
+        </g>
+      </g>
+      <!-- Accessories are Ghost's, worn here via the design project's own composed
+           transform (translate to Buggy's head center, scale down slightly, translate
+           back from Ghost's own head-center pivot) — Cat.dc.html's real placement. -->
+      <g transform="translate(100 50) scale(0.86) translate(-106 -38)">
+${skinAccessoryLayers()}
+      </g>
+    </g>
+  </g>
+  <rect class="sill" x="6" y="182" width="188" height="20" rx="10" fill="${SILL}" stroke="${OUT}" stroke-width="5"/>
+  <path class="ledge" d="M-14 156 H214 V220 H-14 Z" fill="${TRACK}" stroke="${OUT}" stroke-width="5"/>
+  <g class="sparkles" fill="${GOLD}" stroke="${OUT}" stroke-width="2">
+    <path class="sp1" d="M26 62 l5 11 11 5 -11 5 -5 11 -5 -11 -11 -5 11 -5 Z"/>
+    <path class="sp2" d="M172 42 l4 9 9 4 -9 4 -4 9 -4 -9 -9 -4 9 -4 Z"/>
+    <path class="sp3" d="M166 132 l3.5 8 8 3.5 -8 3.5 -3.5 8 -3.5 -8 -8 -3.5 8 -3.5 Z"/>
+  </g>
+  <g class="zzz" fill="${MUTED}" font-family="'Pak-a-boo Sans', sans-serif" font-weight="800">
+    <text class="z1" x="150" y="120" font-size="18">z</text>
+    <text class="z2" x="150" y="120" font-size="14">z</text>
+  </g>
+</svg>`;
+
+// Keyframes shared verbatim across all three rigs (identical in Blob.dc.html/Cat.dc.html
+// to Ghost's own copies above) — kept as one block rather than duplicated per character.
+const SHARED_POSE_KEYFRAMES = `
+  @keyframes breathe2 { 0%, 100% { transform: translateY(0) scale(1, 1); } 30% { transform: translateY(-6px) scale(.985, 1.02); } 62% { transform: translateY(2px) scale(1.018, .984); } }
+  @keyframes bob { 0%, 100% { transform: translate(0, 0) rotate(0); } 24% { transform: translate(-2px, -2px) rotate(-3deg); } 52% { transform: translate(0, 2px) rotate(1deg); } 78% { transform: translate(2px, -1px) rotate(2.6deg); } }
+  @keyframes lookaround { 0%, 34%, 100% { transform: rotate(-5deg) translateY(0); } 12% { transform: rotate(-8deg) translateY(-3px); } 52% { transform: rotate(6deg) translateY(-1px); } 78% { transform: rotate(-2deg) translateY(1px); } }
+  @keyframes hop { 0%, 100% { transform: translateY(0) scale(1, 1); } 14% { transform: translateY(2px) scale(1.09, .9); } 46% { transform: translateY(-22px) scale(.9, 1.12); } 74% { transform: translateY(2px) scale(1.07, .93); } 88% { transform: translateY(-3px) scale(.99, 1.01); } }
+  @keyframes peekup { 0%, 100% { transform: translateY(14px) rotate(-4deg); } 50% { transform: translateY(-2px) rotate(4deg); } }
+  @keyframes openup { 0%, 100% { transform: scale(1, 1) translateY(0); } 50% { transform: scale(1.07, 1.02) translateY(-4px); } }
+  @keyframes stretchup { 0%, 100% { transform: scale(1, 1) translateY(0); } 50% { transform: scale(.93, 1.1) translateY(-8px); } }
+  @keyframes flopk { 0%, 100% { transform: translateY(24px) scale(1.18, .68); } 50% { transform: translateY(26px) scale(1.12, .72); } }
+  @keyframes shadowpulse { 0%, 100% { transform: scale(1, 1); opacity: .14; } 30% { transform: scale(.86, 1); opacity: .09; } }
+  @keyframes blinkO { 0%, 90%, 100% { opacity: 1; } 93%, 97% { opacity: 0; } }
+  @keyframes blinkC { 0%, 90%, 100% { opacity: 0; } 93%, 97% { opacity: 1; } }
+  @keyframes sipk { 0%, 50%, 100% { transform: rotate(0) translateY(0); } 68%, 84% { transform: rotate(-9deg) translateY(5px); } }
+  @keyframes drinkR { 0%, 100% { transform: rotate(12deg) scaleX(.9); } 55% { transform: rotate(24deg) scaleX(.9); } }
+  @keyframes steamk { 0% { opacity: 0; transform: translateY(4px) scale(.9); } 40% { opacity: .9; } 100% { opacity: 0; transform: translateY(-10px) scale(1.1); } }
+  @keyframes chink { 0%, 100% { transform: translateY(0); } 45%, 62% { transform: translateY(10px); } }
+  @keyframes tiltk { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-20deg); } 75% { transform: rotate(20deg); } }
+  @keyframes shrugk { 0%, 100% { transform: translateY(0); } 30% { transform: translateY(-5px); } }
+  @keyframes rollL { 0%, 100% { transform: rotate(-6deg); } 30% { transform: rotate(46deg); } 65% { transform: rotate(14deg); } }
+  @keyframes rollR { 0%, 100% { transform: rotate(6deg); } 30% { transform: rotate(-46deg); } 65% { transform: rotate(-14deg); } }
+  @keyframes wristL { 0%, 100% { transform: rotate(22deg) scaleX(1.1); } 50% { transform: rotate(44deg) scaleX(1.1); } }
+  @keyframes wristR { 0%, 100% { transform: rotate(-22deg) scaleX(1.1); } 50% { transform: rotate(-44deg) scaleX(1.1); } }
+  @keyframes reachL { 0%, 100% { transform: rotate(52deg) scaleX(1.35); } 50% { transform: rotate(62deg) scaleX(1.5); } }
+  @keyframes reachR { 0%, 100% { transform: rotate(-52deg) scaleX(1.35); } 50% { transform: rotate(-62deg) scaleX(1.5); } }
+  @keyframes sparkk { 0%, 100% { opacity: 0; transform: scale(.3) rotate(0); } 45% { opacity: 1; transform: scale(1.15) rotate(75deg); } }
+  @keyframes zzzk { 0% { opacity: 0; transform: translate(0, 0) scale(.5); } 25% { opacity: 1; } 100% { opacity: 0; transform: translate(16px, -30px) scale(1.15); } }
+  @keyframes clouddrift { from { transform: translateX(-14px); } to { transform: translateX(16px); } }
+`;
+
+// Poses common to every rig — same selectors, animation names and durations as Ghost's
+// own copy (GHOST_RIG_STYLE above), built from the shared pose table in Character
+// Options.dc.html rather than Ghost's own hand-tuned deviations from it (Ghost nudges
+// its arm rest angle and its "stand" angle a couple of degrees beyond the table; Blob/
+// Buggy don't have an equivalent polish pass yet, so they follow the table as designed).
+function commonPoseRules(): string {
+  return `
+  .gbody { transform-origin: 100px 190px; animation: breathe2 4.6s ease-in-out infinite; }
+  .ghead { transform-origin: 100px 130px; animation: bob 5.4s ease-in-out infinite; }
+  .gshadow { transform-origin: 100px 198px; opacity: .14; animation: shadowpulse 4.6s ease-in-out infinite; }
+  .arm-l { transform: rotate(7deg); }
+  .arm-r { transform: rotate(-7deg); }
+  .eo-in { animation: blinkO 4.8s infinite; }
+  .ec-in { opacity: 0; animation: blinkC 4.8s infinite; }
+  .eyes { transition: transform .5s; }
+  .window-scene, .sill, .ledge, .mug, .sparkles, .zzz, .eyes-happy, .eyes-sleep, .eyes-heart { display: none; }
+  ${SKIN_LAYERS.map((s) => `.skin-${s}`).join(', ')} { display: none; }
+  .clouds { animation: clouddrift 9s ease-in-out infinite alternate; }
+  .steam { animation: steamk 1.7s ease-out infinite; }
+  .sp1 { transform-origin: 26px 78px; animation: sparkk 1.8s ease-in-out infinite; }
+  .sp2 { transform-origin: 172px 55px; animation: sparkk 1.8s .5s ease-in-out infinite; }
+  .sp3 { transform-origin: 166px 143px; animation: sparkk 1.8s 1s ease-in-out infinite; }
+  .z1 { animation: zzzk 2.8s ease-out infinite; }
+  .z2 { animation: zzzk 2.8s 1.1s ease-out infinite; }
+
+  .pose-peek .gbody { animation: peekup 3.2s ease-in-out infinite; }
+  .pose-peek .eyes { transform: translate(-4px, -2px); }
+  .pose-peek .ledge { display: block; }
+  .pose-window .window-scene, .pose-window .sill { display: block; }
+  .pose-window .ghead { animation: lookaround 7s ease-in-out infinite; }
+  .pose-window .eyes { transform: translate(-6px, -3px); }
+  .pose-blink .eo-in { animation: blinkO .6s infinite; }
+  .pose-blink .ec-in { animation: blinkC .6s infinite; }
+  .pose-flop .gbody { animation: flopk 5.2s ease-in-out infinite; }
+  .pose-flop .ghead { animation: bob 7s ease-in-out infinite; }
+  .pose-flop .eyes-open { display: none; }
+  .pose-flop .eyes-sleep { display: block; }
+  .pose-flop .zzz { display: block; }
+  .pose-stand .gbody { animation: hop 1.15s ease-in-out infinite; }
+  .pose-stand .arm-l { transform: rotate(30deg); }
+  .pose-stand .arm-r { transform: rotate(-30deg); }
+  .pose-happy .gbody { animation: hop .95s ease-in-out infinite; }
+  .pose-happy .arm-l { transform: rotate(44deg); }
+  .pose-happy .arm-r { transform: rotate(-44deg); }
+  .pose-happy .eyes-open { display: none; }
+  .pose-happy .eyes-happy { display: block; }
+  .pose-happy .sparkles { display: block; }
+  .pose-drink .mug { display: block; }
+  .pose-drink .arm-r { transform: none; animation: drinkR 2.6s ease-in-out infinite; }
+  .pose-drink .ghead { animation: sipk 2.6s ease-in-out infinite; }
+  .pose-chin-tuck .ghead { animation: chink 2.8s ease-in-out infinite; }
+  .pose-neck-tilt .ghead { animation: tiltk 4s ease-in-out infinite; }
+  .pose-shoulder-rolls .arm-l { transform: none; animation: rollL 1.7s ease-in-out infinite; }
+  .pose-shoulder-rolls .arm-r { transform: none; animation: rollR 1.7s ease-in-out infinite; }
+  .pose-shoulder-rolls .ghead { animation: shrugk 1.7s ease-in-out infinite; }
+  .pose-wrist-stretch .arm-l { transform: none; animation: wristL 1.9s ease-in-out infinite; }
+  .pose-wrist-stretch .arm-r { transform: none; animation: wristR 1.9s ease-in-out infinite; }
+  .pose-upper-trap .gbody { animation: trapBody 6s ease-in-out infinite; }
+  .pose-upper-trap .ghead { animation: trapHead 6s ease-in-out infinite; }
+  .pose-upper-trap .arm-l { transform: none; animation: trapL 6s ease-in-out infinite; }
+  .pose-upper-trap .arm-r { transform: none; animation: trapR 6s ease-in-out infinite; }
+  .pose-chest-opener .arm-l { transform: rotate(46deg); }
+  .pose-chest-opener .arm-r { transform: rotate(-46deg); }
+  .pose-chest-opener .gbody { animation: openup 2.4s ease-in-out infinite; }
+  .pose-reach .arm-l { transform: none; animation: reachL 2.2s ease-in-out infinite; }
+  .pose-reach .arm-r { transform: none; animation: reachR 2.2s ease-in-out infinite; }
+  .pose-reach .gbody { animation: stretchup 2.2s ease-in-out infinite; }
+  .pose-thoracic-twist .gbody { animation: twistBody 6s ease-in-out infinite; }
+  .pose-thoracic-twist .ghead { animation: twistHead 6s ease-in-out infinite; }
+  .pose-thoracic-twist .arm-l { transform: none; animation: twistL 6s ease-in-out infinite; }
+  .pose-thoracic-twist .arm-r { transform: none; animation: twistR 6s ease-in-out infinite; }
+  .pose-thoracic-twist .eyes { transform: translate(0, -1px); }
+  .pose-side-bend .gbody { animation: bendBody 6s ease-in-out infinite; }
+  .pose-side-bend .ghead { animation: bendHead 6s ease-in-out infinite; }
+  .pose-side-bend .arm-l { transform: none; animation: bendL 6s ease-in-out infinite; }
+  .pose-side-bend .arm-r { transform: none; animation: bendR 6s ease-in-out infinite; }
+
+  /* ---- skins — same accessory motion as Ghost's own copy; only the resting position
+     (the wrapping translate around skinAccessoryLayers() in each SVG) differs per
+     character. ---- */
+  .skin-sprout { transform-origin: 106px 44px; animation: accwob 4.4s ease-in-out infinite; }
+  .leaf-sway { transform-origin: 106px 28px; animation: leafsway 3.6s ease-in-out infinite; }
+  .skin-phones { transform-origin: 104px 80px; animation: accwob 6.2s ease-in-out infinite; }
+  .skin-crown { transform-origin: 106px 56px; animation: accwob 5.2s ease-in-out infinite; }
+  .crown-shine { animation: crownshine 3s ease-in-out infinite; }
+  ${SKIN_LAYERS.map((s) => `[data-skin="${s}"] .skin-${s} { display: block; }`).join('\n  ')}
+  /* Sweetheart swaps the eyes rather than adding a hat — except while asleep. */
+  [data-skin="valentine"] .eyes-open, [data-skin="valentine"] .eyes-happy { display: none; }
+  [data-skin="valentine"] .eyes-heart { display: block; }
+  [data-skin="valentine"].pose-flop .eyes-heart { display: none; }
+  [data-skin="valentine"].pose-flop .eyes-sleep { display: block; }
+`;
+}
+
+export const BLOB_RIG_STYLE = `
+  svg.ghost { display: block; overflow: visible; }
+${SHARED_POSE_KEYFRAMES}
+  @keyframes trapHead { 0%, 100% { transform: rotate(0); } 14% { transform: rotate(-11deg); } 40% { transform: rotate(-12deg); } 50% { transform: rotate(0); } 64% { transform: rotate(11deg); } 90% { transform: rotate(12deg); } }
+  @keyframes trapBody { 0%, 100% { transform: rotate(0) translateY(0); } 14% { transform: rotate(-4deg) translateY(-2px); } 40% { transform: rotate(-5deg) translateY(-2px); } 50% { transform: rotate(0) translateY(0); } 64% { transform: rotate(4deg) translateY(-2px); } 90% { transform: rotate(5deg) translateY(-2px); } }
+  @keyframes trapL { 0%, 100% { transform: rotate(8deg); } 14% { transform: translate(56px, -78px) rotate(-20deg); } 40% { transform: translate(56px, -81px) rotate(-22deg); } 50% { transform: rotate(8deg); } 64% { transform: rotate(-2deg); } 90% { transform: rotate(-4deg); } }
+  @keyframes trapR { 0%, 100% { transform: rotate(-8deg); } 14% { transform: rotate(2deg); } 40% { transform: rotate(4deg); } 50% { transform: rotate(-8deg); } 64% { transform: translate(-56px, -78px) rotate(20deg); } 90% { transform: translate(-56px, -81px) rotate(22deg); } }
+  @keyframes twistBody { 0%, 100% { transform: scaleX(1) translateX(0) rotate(0); } 12% { transform: scaleX(.84) translateX(-7px) rotate(-4deg); } 38% { transform: scaleX(.84) translateX(-7px) rotate(-4deg); } 50% { transform: scaleX(1) translateX(0) rotate(0); } 62% { transform: scaleX(.84) translateX(7px) rotate(4deg); } 88% { transform: scaleX(.84) translateX(7px) rotate(4deg); } }
+  @keyframes twistHead { 0%, 100% { transform: scaleX(1) rotate(0); } 12% { transform: scaleX(.7) translateX(-9px) rotate(-9deg); } 38% { transform: scaleX(.7) translateX(-9px) rotate(-9deg); } 50% { transform: scaleX(1) rotate(0); } 62% { transform: scaleX(.7) translateX(9px) rotate(9deg); } 88% { transform: scaleX(.7) translateX(9px) rotate(9deg); } }
+  @keyframes twistL { 0%, 100% { transform: rotate(10deg) scaleX(1); } 12% { transform: rotate(-6deg) scaleX(1.5) translateX(4px); } 38% { transform: rotate(-8deg) scaleX(1.55) translateX(4px); } 50% { transform: rotate(10deg) scaleX(1); } 62% { transform: rotate(34deg) scaleX(1.25); } 88% { transform: rotate(36deg) scaleX(1.3); } }
+  @keyframes twistR { 0%, 100% { transform: rotate(-10deg) scaleX(1); } 12% { transform: rotate(-34deg) scaleX(1.25); } 38% { transform: rotate(-36deg) scaleX(1.3); } 50% { transform: rotate(-10deg) scaleX(1); } 62% { transform: rotate(6deg) scaleX(1.5) translateX(-4px); } 88% { transform: rotate(8deg) scaleX(1.55) translateX(-4px); } }
+  @keyframes bendBody { 0%, 100% { transform: rotate(0) skewX(0); } 14% { transform: rotate(13deg) skewX(-6deg); } 38% { transform: rotate(15deg) skewX(-7deg); } 50% { transform: rotate(0) skewX(0); } 64% { transform: rotate(-13deg) skewX(6deg); } 88% { transform: rotate(-15deg) skewX(7deg); } }
+  @keyframes bendHead { 0%, 100% { transform: rotate(0); } 14% { transform: rotate(9deg) translateX(4px); } 38% { transform: rotate(11deg) translateX(5px); } 50% { transform: rotate(0); } 64% { transform: rotate(-9deg) translateX(-4px); } 88% { transform: rotate(-11deg) translateX(-5px); } }
+  @keyframes bendL { 0%, 100% { transform: rotate(14deg) scaleX(1); } 14% { transform: rotate(52deg) scaleX(1.12); } 38% { transform: rotate(56deg) scaleX(1.15); } 50% { transform: rotate(14deg) scaleX(1); } 64% { transform: rotate(-22deg) scaleX(1.1); } 88% { transform: rotate(-26deg) scaleX(1.12); } }
+  @keyframes bendR { 0%, 100% { transform: rotate(-14deg) scaleX(1); } 14% { transform: rotate(22deg) scaleX(1.1); } 38% { transform: rotate(26deg) scaleX(1.12); } 50% { transform: rotate(-14deg) scaleX(1); } 64% { transform: rotate(-52deg) scaleX(1.12); } 88% { transform: rotate(-56deg) scaleX(1.15); } }
+  @keyframes glowk { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+  @keyframes blobjig { 0%, 100% { transform: scale(1, 1); } 34% { transform: scale(1.045, .955); } 68% { transform: scale(.97, 1.03); } }
+  /* Accessory keyframes — needed once skins are worn here too (skinAccessoryLayers()
+     below), not because Blob's own body markup uses them. */
+  @keyframes accwob { 0%, 100% { transform: rotate(-3deg) translateY(0); } 50% { transform: rotate(3deg) translateY(-1.5px); } }
+  @keyframes leafsway { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+  @keyframes crownshine { 0%, 100% { opacity: .25; } 50% { opacity: .85; } }
+  @keyframes ringk { 0%, 100% { transform: rotate(-4deg); } 12% { transform: rotate(5deg); } 24% { transform: rotate(-4deg); } 36% { transform: rotate(4deg); } 48%, 99% { transform: rotate(0); } }
+  @keyframes lotusbreath { 0%, 100% { transform: scale(1) rotate(-1.5deg); } 50% { transform: scale(1.035) rotate(1.5deg); } }
+  @keyframes heartpop { 0%, 100% { transform: scale(1) rotate(-5deg); } 50% { transform: scale(1.14) rotate(5deg); } }
+  @keyframes dropk { 0% { opacity: 0; transform: translateY(-6px) scale(.7); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(20px) scale(1.05); } }
+  @keyframes earflop { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(5deg); } }
+  @keyframes catbreath { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.02, .97); } }
+  @keyframes pomswing { 0%, 100% { transform: rotate(-13deg); } 50% { transform: rotate(13deg); } }
+
+  .blob-shape { transform-origin: 100px 150px; animation: blobjig 4.2s ease-in-out infinite; }
+  .blob-glow { transform-origin: 70px 82px; animation: glowk 4.5s ease-in-out infinite; }
+  .arm-l { transform-origin: 46px 134px; }
+  .arm-r { transform-origin: 154px 134px; }
+${commonPoseRules()}
+  /* Blob holds a fixed puddle angle while napping, like Buggy — matching Blob.dc.html's
+     own flop override (see BUGGY_RIG_STYLE's identical note for why this replaces the
+     shared pose table's rotL/rotR instead of animating from it). */
+  .pose-flop .arm-l { transform: rotate(-16deg); }
+  .pose-flop .arm-r { transform: rotate(16deg); }
+`;
+
+export const BUGGY_RIG_STYLE = `
+  svg.ghost { display: block; overflow: visible; }
+${SHARED_POSE_KEYFRAMES}
+  @keyframes trapHead { 0%, 100% { transform: rotate(0); } 14% { transform: rotate(-11deg); } 40% { transform: rotate(-12deg); } 50% { transform: rotate(0); } 64% { transform: rotate(11deg); } 90% { transform: rotate(12deg); } }
+  @keyframes trapBody { 0%, 100% { transform: rotate(0) translateY(0); } 14% { transform: rotate(-4deg) translateY(-2px); } 40% { transform: rotate(-5deg) translateY(-2px); } 50% { transform: rotate(0) translateY(0); } 64% { transform: rotate(4deg) translateY(-2px); } 90% { transform: rotate(5deg) translateY(-2px); } }
+  @keyframes trapL { 0%, 100% { transform: rotate(8deg); } 14% { transform: translate(62px, -84px) rotate(-20deg); } 40% { transform: translate(62px, -87px) rotate(-22deg); } 50% { transform: rotate(8deg); } 64% { transform: rotate(-2deg); } 90% { transform: rotate(-4deg); } }
+  @keyframes trapR { 0%, 100% { transform: rotate(-8deg); } 14% { transform: rotate(2deg); } 40% { transform: rotate(4deg); } 50% { transform: rotate(-8deg); } 64% { transform: translate(-62px, -84px) rotate(20deg); } 90% { transform: translate(-62px, -87px) rotate(22deg); } }
+  @keyframes twistBody { 0%, 100% { transform: scaleX(1) translateX(0) rotate(0); } 12% { transform: scaleX(.84) translateX(-7px) rotate(-4deg); } 38% { transform: scaleX(.84) translateX(-7px) rotate(-4deg); } 50% { transform: scaleX(1) translateX(0) rotate(0); } 62% { transform: scaleX(.84) translateX(7px) rotate(4deg); } 88% { transform: scaleX(.84) translateX(7px) rotate(4deg); } }
+  @keyframes twistHead { 0%, 100% { transform: scaleX(1) rotate(0); } 12% { transform: scaleX(.7) translateX(-9px) rotate(-9deg); } 38% { transform: scaleX(.7) translateX(-9px) rotate(-9deg); } 50% { transform: scaleX(1) rotate(0); } 62% { transform: scaleX(.7) translateX(9px) rotate(9deg); } 88% { transform: scaleX(.7) translateX(9px) rotate(9deg); } }
+  @keyframes twistL { 0%, 100% { transform: rotate(10deg) scaleX(1); } 12% { transform: rotate(-6deg) scaleX(1.5) translateX(4px); } 38% { transform: rotate(-8deg) scaleX(1.55) translateX(4px); } 50% { transform: rotate(10deg) scaleX(1); } 62% { transform: rotate(34deg) scaleX(1.25); } 88% { transform: rotate(36deg) scaleX(1.3); } }
+  @keyframes twistR { 0%, 100% { transform: rotate(-10deg) scaleX(1); } 12% { transform: rotate(-34deg) scaleX(1.25); } 38% { transform: rotate(-36deg) scaleX(1.3); } 50% { transform: rotate(-10deg) scaleX(1); } 62% { transform: rotate(6deg) scaleX(1.5) translateX(-4px); } 88% { transform: rotate(8deg) scaleX(1.55) translateX(-4px); } }
+  @keyframes bendBody { 0%, 100% { transform: rotate(0) skewX(0); } 14% { transform: rotate(13deg) skewX(-6deg); } 38% { transform: rotate(15deg) skewX(-7deg); } 50% { transform: rotate(0) skewX(0); } 64% { transform: rotate(-13deg) skewX(6deg); } 88% { transform: rotate(-15deg) skewX(7deg); } }
+  @keyframes bendHead { 0%, 100% { transform: rotate(0); } 14% { transform: rotate(9deg) translateX(4px); } 38% { transform: rotate(11deg) translateX(5px); } 50% { transform: rotate(0); } 64% { transform: rotate(-9deg) translateX(-4px); } 88% { transform: rotate(-11deg) translateX(-5px); } }
+  @keyframes bendL { 0%, 100% { transform: rotate(14deg) scaleX(1); } 14% { transform: rotate(52deg) scaleX(1.12); } 38% { transform: rotate(56deg) scaleX(1.15); } 50% { transform: rotate(14deg) scaleX(1); } 64% { transform: rotate(-22deg) scaleX(1.1); } 88% { transform: rotate(-26deg) scaleX(1.12); } }
+  @keyframes bendR { 0%, 100% { transform: rotate(-14deg) scaleX(1); } 14% { transform: rotate(22deg) scaleX(1.1); } 38% { transform: rotate(26deg) scaleX(1.12); } 50% { transform: rotate(-14deg) scaleX(1); } 64% { transform: rotate(-52deg) scaleX(1.12); } 88% { transform: rotate(-56deg) scaleX(1.15); } }
+  @keyframes tailsway { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(10deg); } }
+  /* Accessory keyframes — needed once skins are worn here too (skinAccessoryLayers()
+     below), not because Buggy's own body markup uses them. */
+  @keyframes accwob { 0%, 100% { transform: rotate(-3deg) translateY(0); } 50% { transform: rotate(3deg) translateY(-1.5px); } }
+  @keyframes leafsway { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+  @keyframes crownshine { 0%, 100% { opacity: .25; } 50% { opacity: .85; } }
+  @keyframes ringk { 0%, 100% { transform: rotate(-4deg); } 12% { transform: rotate(5deg); } 24% { transform: rotate(-4deg); } 36% { transform: rotate(4deg); } 48%, 99% { transform: rotate(0); } }
+  @keyframes lotusbreath { 0%, 100% { transform: scale(1) rotate(-1.5deg); } 50% { transform: scale(1.035) rotate(1.5deg); } }
+  @keyframes heartpop { 0%, 100% { transform: scale(1) rotate(-5deg); } 50% { transform: scale(1.14) rotate(5deg); } }
+  @keyframes dropk { 0% { opacity: 0; transform: translateY(-6px) scale(.7); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(20px) scale(1.05); } }
+  @keyframes glowk { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+  @keyframes earflop { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(5deg); } }
+  @keyframes catbreath { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.02, .97); } }
+  @keyframes pomswing { 0%, 100% { transform: rotate(-13deg); } 50% { transform: rotate(13deg); } }
+
+  .buggy-shape { transform-origin: 100px 70px; animation: catbreath 4.4s ease-in-out infinite; }
+  .tail { transform-origin: 168px 130px; animation: tailsway 5.2s ease-in-out infinite; }
+  .arm-l { transform-origin: 44px 148px; }
+  .arm-r { transform-origin: 156px 148px; }
+${commonPoseRules()}
+  /* Buggy holds a fixed puddle angle while napping, like Blob — matching Cat.dc.html's
+     own flop override, which replaces the shared pose table's rotL/rotR outright for
+     this one pose rather than feeding them from it like every other pose does. */
+  .pose-flop .arm-l { transform: rotate(-14deg); }
+  .pose-flop .arm-r { transform: rotate(14deg); }
+`;
+
+export interface CharacterRig { svg: string; style: string }
+
+// Which body the shared 17-pose rig renders. Keyed by Character (types.ts) so a
+// character switch is a single lookup — see content.ts's boot(), which re-injects the
+// whole ghost using whichever entry the `character` setting currently names.
+export const CHARACTER_RIGS: Record<Character, CharacterRig> = {
+  ghost: { svg: GHOST_SVG, style: GHOST_RIG_STYLE },
+  blob: { svg: BLOB_SVG, style: BLOB_RIG_STYLE },
+  buggy: { svg: BUGGY_SVG, style: BUGGY_RIG_STYLE }
+};
