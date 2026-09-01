@@ -652,34 +652,20 @@ export const BUGGY_SVG = `
         </g>
       </g>
       <g style="transform: translate(-6px, 24px);">
-        <!-- Blush/whiskers/nose sit outside .eyes on purpose — only .eyes (the pupil
-             states) gets the peek/window gaze-shift transform in commonPoseRules(), same
-             as the design's own nesting (pose.eyesT wraps just the eye states). -->
+        <!-- Blush/whiskers stay fixed during peek/window; the nose and mouth are both
+             nested inside .eyes (see below) so the whole face — eyes, nose, mouth —
+             shifts together as one unit for the gaze-shift transform in
+             commonPoseRules(). Leaving either the nose or the mouth outside .eyes reads
+             as it drifting away from wherever the eyes are looking, which is far more
+             noticeable than blush/whiskers staying put a few px off from the rest. -->
         <ellipse cx="64" cy="130" rx="12" ry="7" fill="${BUGGY_BLUSH}" opacity=".45"/>
         <ellipse cx="136" cy="130" rx="12" ry="7" fill="${BUGGY_BLUSH}" opacity=".45"/>
         <g class="whiskers" stroke="${BUGGY_WHISKER}" stroke-width="3" stroke-linecap="round" fill="none" opacity=".9">
           <path d="M48 120 L14 112 M48 128 L12 132"/>
           <path d="M164 120 L198 112 M164 128 L200 132"/>
         </g>
-        <path class="nose" d="M100 106 L112 106 L106 114 Z" fill="${BUGGY_NOSE}" stroke-linejoin="round"/>
-        <!-- The mouth is its own set of sibling groups (sharing the eyes-open/happy/
-             sleep/heart class names, so the same pose CSS shows/hides both) rather than
-             nested inside .eyes — the nose stays fixed during peek/window (see the note
-             above), and a mouth that shifted with the pupils while the nose didn't would
-             visibly detach from it by the same few pixels those poses move .eyes. -->
-        <g class="eyes-open">
-          <path d="M106 114 L106 120 M106 120 Q97 129 88 121 M106 120 Q115 129 124 121" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
-        </g>
-        <g class="eyes-happy">
-          <path d="M106 114 L106 121 M106 121 Q95 133 85 122 M106 121 Q117 133 127 122" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
-        </g>
-        <g class="eyes-sleep">
-          <path d="M106 114 L106 119 M106 119 Q99 125 92 120 M106 119 Q113 125 120 120" fill="none" stroke="${EYE}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>
-        <g class="eyes-heart">
-          <path d="M106 116 L106 122 M106 122 Q95 134 85 123 M106 122 Q117 134 127 123" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
-        </g>
         <g class="eyes">
+          <path class="nose" d="M100 106 L112 106 L106 114 Z" fill="${BUGGY_NOSE}" stroke-linejoin="round"/>
           <g class="eyes-open">
             <g class="eo-in">
               <ellipse cx="86" cy="98" rx="11" ry="14" fill="${EYE}"/>
@@ -693,17 +679,20 @@ export const BUGGY_SVG = `
               <path d="M75 98 Q86 107 97 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
               <path d="M115 98 Q126 107 137 98" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
             </g>
+            <path d="M106 114 L106 120 M106 120 Q97 129 88 121 M106 120 Q115 129 124 121" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
           </g>
           <g class="eyes-happy">
             <path d="M75 102 Q86 86 97 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
             <path d="M115 102 Q126 86 137 102" fill="none" stroke="${EYE}" stroke-width="6" stroke-linecap="round"/>
+            <path d="M106 114 L106 121 M106 121 Q95 133 85 122 M106 121 Q117 133 127 122" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
           </g>
           <g class="eyes-sleep">
             <path d="M75 96 Q86 106 97 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
             <path d="M115 96 Q126 106 137 96" fill="none" stroke="${EYE}" stroke-width="5.5" stroke-linecap="round"/>
+            <path d="M106 114 L106 119 M106 119 Q99 125 92 120 M106 119 Q113 125 120 120" fill="none" stroke="${EYE}" stroke-width="4.5" stroke-linecap="round"/>
           </g>
           <!-- Buggy's own eyes-heart, not the shared EYES_HEART_MARKUP — same heart
-               shapes, but with Buggy's cat-mouth line (above) instead of the plain arc. -->
+               shapes, but with Buggy's cat-mouth line instead of the plain arc. -->
           <g class="eyes-heart">
             <g style="transform-origin: 86px 99px; animation: heartpop 1.5s ease-in-out infinite;">
               <path d="M86 112 C70 100 74 83 86 93 C98 83 102 100 86 112 Z" fill="${HEART}" stroke="${EYE}" stroke-width="4.5" stroke-linejoin="round"/>
@@ -713,6 +702,7 @@ export const BUGGY_SVG = `
               <path d="M126 112 C110 100 114 83 126 93 C138 83 142 100 126 112 Z" fill="${HEART}" stroke="${EYE}" stroke-width="4.5" stroke-linejoin="round"/>
               <circle cx="120" cy="94" r="2.8" fill="#FFFFFF" opacity=".85"/>
             </g>
+            <path d="M106 116 L106 122 M106 122 Q95 134 85 123 M106 122 Q117 134 127 123" fill="none" stroke="${EYE}" stroke-width="5" stroke-linecap="round"/>
           </g>
         </g>
       </g>
