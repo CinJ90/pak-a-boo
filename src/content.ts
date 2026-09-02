@@ -310,7 +310,9 @@ async function boot(): Promise<void> {
   // the skin-refresh interval registered near the end of this function are page/global-
   // level, not attached to that DOM — nothing else would ever remove them, so every
   // earlier instance's copy would keep running forever alongside each new one,
-  // compounding with every update.
+  // compounding with every update. This has to run before the content-type bail below —
+  // an XML/feed tab left corrupted by an older version of this script (pre-dating that
+  // guard) needs cleaning up on the next reinjection too, not just fresh injections.
   const previousTeardown = window.__pakABooTeardown;
   window.__pakABooTeardown = undefined;
   previousTeardown?.();
@@ -320,6 +322,14 @@ async function boot(): Promise<void> {
   // Replace it rather than bailing, or the ghost silently never works in that tab
   // again until a manual page refresh (exactly what auto-injection exists to avoid).
   document.getElementById('pak-a-boo-host')?.remove();
+
+  // Chrome's native viewer for a directly-navigated non-HTML document (an XML sitemap,
+  // an RSS/Atom feed, plain text, ...) reports document.contentType other than
+  // "text/html" — and unlike a real page, that viewer doesn't render appended elements
+  // through the normal CSS/shadow-DOM pipeline. document.documentElement.append(host)
+  // below would just dump the shadow root's raw innerHTML (rig CSS included) as visible
+  // text on the page. Bail before any of that runs — there's no page here to overlay.
+  if (document.contentType !== 'text/html') return;
 
   // Fire-and-forget: runs concurrently with the storage reads below rather than
   // blocking on it. font-display: swap-equivalent — text renders with the fallback
