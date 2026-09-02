@@ -1,4 +1,4 @@
-# Pak-a-boo
+# Pak-a-boo: Eye Rest
 
 Pak-a-boo is a privacy-first Chrome extension that uses one gentle break rhythm to remind you to rest your eyes, move, and drink water.
 
