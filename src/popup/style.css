@@ -44,9 +44,9 @@ h1 { margin: 0; font-size: 19px; line-height: 1; font-weight: 800; } p { margin:
    active-day rule (see StreakState in types.ts) — no custom popover: the popup is 320px
    wide and hover works normally in extension popups. Borderless so it reads as part of
    the caption line, not a second control competing with the reset button. */
-.streak-help { flex: none; width: 16px; height: 16px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #9DBBAF; cursor: help; transition: color .2s; }
-.streak-help:hover, .streak-help:focus-visible { color: #4F9C82; outline: none; }
-.streak-help:focus-visible { box-shadow: 0 0 0 2px #B9D4C8; }
+.streak-help { flex: none; width: 16px; height: 16px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #6E8880; cursor: help; transition: color .2s; }
+.streak-help:hover { color: #4F9C82; }
+.streak-help:focus-visible { color: #4F9C82; outline: 2px solid #4F9C82; outline-offset: 2px; }
 .streak-dot { width: 9px; height: 9px; border-radius: 50%; background: #E7ECEA; border: 2px solid #DCEEE4; }
 .streak-dot.reached { background: #F3A93B; border-color: #F3A93B; }
 .streak-dot.current { animation: dot-pulse 1.2s ease-in-out infinite; }
@@ -62,4 +62,10 @@ h1 { margin: 0; font-size: 19px; line-height: 1; font-weight: 800; } p { margin:
 .skin-btn:disabled { opacity: .35; filter: grayscale(1); cursor: not-allowed; }
 /* The legendary slot: its existence is visible, its identity isn't, until earned. */
 .skin-mystery { display: grid; place-items: center; width: 19px; height: 19px; font-size: 14px; font-weight: 800; color: #2E4038; }
-footer { display: flex; justify-content: space-between; margin-top: 12px; font-size: 11px; color: #6E8880; } a { color: #4F9C82; font-weight: 700; text-decoration: none; }
+footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 11px; color: #6E8880; } a { color: #4F9C82; font-weight: 700; text-decoration: none; }
+.footer-links { display: flex; align-items: center; gap: 10px; }
+/* 24px anchor (not the 14px icon it centers) so the tap target meets the ~24px minimum
+   for a touch-sized control, even though this is a desktop popup. */
+.info-link { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; color: #6E8880; transition: color .2s; }
+.info-link:hover { color: #4F9C82; }
+.info-link:focus-visible { color: #4F9C82; outline: 2px solid #4F9C82; outline-offset: 2px; }

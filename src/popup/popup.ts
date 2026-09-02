@@ -20,6 +20,7 @@ const COPY = {
     focusStatus: 'Focus mode — breaks paused',
     offStatus: 'Off — no reminders',
     cocoa: 'Buy me a cocoa ☕',
+    infoLink: 'Visit the Pak-a-boo website',
     resetCycle: 'Reset cycle',
     streakCaption: (n: number, daysToNext: number | null) => {
       if (n === 0) return 'Start a streak!';
@@ -46,6 +47,7 @@ const COPY = {
     focusStatus: 'โหมดโฟกัส — พักหยุดชั่วคราว',
     offStatus: 'ปิดอยู่ — ไม่มีการเตือน',
     cocoa: 'เติมโกโก้ให้เรา ☕',
+    infoLink: 'ไปที่เว็บไซต์ Pak-a-boo',
     resetCycle: 'รีเซ็ตรอบพัก',
     streakCaption: (n: number, daysToNext: number | null) => {
       if (n === 0) return 'เริ่มสตรีคกันเถอะ!';
@@ -72,6 +74,7 @@ const nextPeekLabel = document.querySelector('#next-peek-label') as HTMLElement;
 const breakLabel = document.querySelector('#break-label') as HTMLElement;
 const breaksLabel = document.querySelector('#breaks-label') as HTMLElement;
 const cocoaLink = document.querySelector('#cocoa-link') as HTMLElement;
+const infoLink = document.querySelector('#info-link') as HTMLElement;
 const versionLabel = document.querySelector('#version') as HTMLElement;
 const langButtons = document.querySelectorAll<HTMLButtonElement>('.lang-btn');
 const streakCount = document.querySelector('#streak-count') as HTMLElement;
@@ -159,6 +162,9 @@ async function refresh(): Promise<void> {
   breaksLabel.textContent = c.breaksToday;
   screenTimeLabel.textContent = c.screenTimeToday;
   cocoaLink.textContent = c.cocoa;
+  // Icon-only link — the label lives in aria-label/title, same pattern as streakHelp below.
+  infoLink.setAttribute('aria-label', c.infoLink);
+  infoLink.title = c.infoLink;
   // Read straight from the manifest so this can't drift from the shipped version again.
   versionLabel.textContent = `v${chrome.runtime.getManifest().version}`;
   powerBtn.textContent = settings.enabled ? c.turnOff : c.turnOn;
