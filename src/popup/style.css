@@ -29,6 +29,14 @@ h1 { margin: 0; font-size: 19px; line-height: 1; font-weight: 800; } p { margin:
 .next strong { display: block; margin: 2px 0; font-size: 32px; line-height: 1; letter-spacing: 0; }
 .next span:last-child { font-size: 11px; color: #6E8880; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } button { padding: 9px 6px; border: 1px solid #B9D4C8; border-radius: 10px; background: #BFE3C7; color: #2E4038; cursor: pointer; font: 700 12px 'IBM Plex Sans', 'IBM Plex Sans Thai', sans-serif; } button + button { background: transparent; } button:disabled { cursor: not-allowed; opacity: .45; }
+/* Sits between the focus/off actions and the stats. The buttons need their colours
+   stated explicitly because the global `button` rule above styles every button in the
+   popup as a filled action — same reason .character-btn and .lang-switch restate theirs. */
+.rhythm { margin-top: 12px; }
+.rhythm-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px; }
+.rhythm-btn { padding: 6px 0; border: 0; border-radius: 999px; background: #DCEEE4; color: #6E8880; font: 800 11px 'IBM Plex Sans', 'IBM Plex Sans Thai', sans-serif; cursor: pointer; }
+.rhythm-btn.active { background: #4F9C82; color: #F6FBF8; }
+.rhythm-caption { display: block; margin-top: 6px; font-size: 10px; line-height: 1.3; color: #6E8880; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 12px; } .stats div { padding: 8px 4px 0; border-top: 1px solid #DCEEE4; } .stats strong, .stats span { display: block; } .stats strong { font-size: 14px; } .stats span { margin-top: 2px; color: #6E8880; font-size: 10px; line-height: 1.3; }
 @keyframes flame-flicker { 0%, 100% { transform: scale(1) rotate(-4deg); } 50% { transform: scale(1.14) rotate(4deg); } }
 @keyframes dot-pulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(243, 169, 59, .5); } 50% { transform: scale(1.35); box-shadow: 0 0 0 4px rgba(243, 169, 59, 0); } }

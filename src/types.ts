@@ -77,6 +77,42 @@ export function isStaleBreak(s: SchedulerState, now = Date.now()): boolean {
   return now - (s.lastBreakAt ?? s.nextBreakAt) > STALE_GRACE_MS;
 }
 
+// The rhythms the popup offers, in minutes between consecutive breaks. Both are
+// positions an expert body actually holds, which is why the ladder stops at 30:
+//   20 — the 20-20-20 rule, what the AOA and AAO recommend for digital eye strain.
+//   30 — the cycle length in Cornell's 20-8-2 rule (20 min sitting, 8 standing,
+//        2 moving), an ergonomics rather than eye-care guideline.
+// Longer options were considered and dropped: no professional body recommends a 45- or
+// 60-minute eye break, and offering one under a listing that leads with the 20-20-20
+// rule would have had the extension promise guidance it wasn't following. The escape
+// valve for "it interrupts too often" is 30, plus focus mode and the off switch.
+//
+// One number, not two: microMinutes and bigMinutes are both the GAP before their break
+// (see DEFAULT_SETTINGS), so keeping them equal is what makes every gap in the cycle
+// the same length. Every third break is the big one, so the big-break cadence the
+// popup quotes is simply 3x whatever is picked here.
+export const RHYTHM_PRESETS = [20, 30] as const;
+export const BREAKS_PER_CYCLE = 3;
+
+// Accepted range for a hand-edited or foreign-build value, deliberately wider than
+// RHYTHM_PRESETS so a rhythm written by a NEWER version survives a downgrade instead
+// of being snapped back to a preset (same reasoning as StreakState.unlockedSkins).
+export const MIN_RHYTHM_MINUTES = 5;
+export const MAX_RHYTHM_MINUTES = 180;
+
+// These two are the only user-writable numbers in Settings, and they're multiplied
+// into an alarm time — so unlike the other fields, a spread of DEFAULT_SETTINGS isn't
+// enough to make them safe (that only fills keys that are MISSING, and storage.sync
+// can hold anything an older build, another device, or a hand edit put there). A
+// non-number, a fraction, or an out-of-range value would schedule a nonsense alarm.
+// Whole minutes only: sub-minute MV3 alarms are unreliable (see the plan's §8.3).
+export function normalizeRhythmMinutes(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  const whole = Math.round(value);
+  if (whole < MIN_RHYTHM_MINUTES || whole > MAX_RHYTHM_MINUTES) return fallback;
+  return whole;
+}
+
 export const DEFAULT_SETTINGS: Settings = {
   // Per the plan's rhythm: breaks land at absolute clock marks :20/:40/:60 — every gap
   // between consecutive breaks (including the one before the big break) is 20 minutes.

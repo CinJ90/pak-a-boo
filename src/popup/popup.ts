@@ -1,5 +1,5 @@
 import '../popup/style.css';
-import { CHARACTER_REGISTRY, DEFAULT_SETTINGS, isStreakAlive, localDateStr, normalizeStreak, type Character, type SchedulerState, type Settings, type Skin, type StreakState } from '../types';
+import { BREAKS_PER_CYCLE, CHARACTER_REGISTRY, DEFAULT_SETTINGS, RHYTHM_PRESETS, isStreakAlive, localDateStr, normalizeRhythmMinutes, normalizeStreak, type Character, type SchedulerState, type Settings, type Skin, type StreakState } from '../types';
 import { COLLECTABLE, STREAK_MILESTONES, effectiveUnlocked, normalizeCounters, resolveDefaultLook, rollCounters, screenMsSoFar, skinDef, type Counters } from '../skins';
 
 type Lang = Settings['language'];
@@ -30,7 +30,13 @@ const COPY = {
     skinLocked: (n: number) => `Unlock at ${n}-day streak`,
     mystery: 'A secret look — keep resting to find it',
     streakHelp: 'How the streak works',
-    streakHelpText: 'Counts days you actually worked. Days you’re away (weekends, holidays) don’t break it — only a working day with no breaks does.'
+    streakHelpText: 'Counts days you actually worked. Days you’re away (weekends, holidays) don’t break it — only a working day with no breaks does.',
+    rhythm: 'BREAK RHYTHM',
+    rhythmGroup: 'Break rhythm',
+    rhythmOption: (n: number) => `${n} min`,
+    rhythmOptionTitle: (n: number) => `A break every ${n} minutes`,
+    rhythmSpan: (h: number, m: number) => (h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m} min`),
+    rhythmCaption: (n: number, big: string) => `Eye break every ${n} min · stretch every ${big}`
   },
   th: {
     tagline: (charName: string) => `${charName}คอยเตือนให้คุณได้พัก`,
@@ -57,7 +63,13 @@ const COPY = {
     skinLocked: (n: number) => `ปลดล็อกที่สตรีค ${n} วัน`,
     mystery: 'สกินลับ ~ พักไปเรื่อย ๆ แล้วจะเจอ',
     streakHelp: 'สตรีคนับอย่างไร',
-    streakHelpText: 'นับเฉพาะวันที่คุณทำงานจริง วันที่ไม่ได้ใช้งาน (เสาร์-อาทิตย์ วันหยุด) ไม่ทำให้สตรีคขาด — ขาดเฉพาะเมื่อทำงานทั้งวันแต่ไม่ได้พักเลย'
+    streakHelpText: 'นับเฉพาะวันที่คุณทำงานจริง วันที่ไม่ได้ใช้งาน (เสาร์-อาทิตย์ วันหยุด) ไม่ทำให้สตรีคขาด — ขาดเฉพาะเมื่อทำงานทั้งวันแต่ไม่ได้พักเลย',
+    rhythm: 'จังหวะการพัก',
+    rhythmGroup: 'จังหวะการพัก',
+    rhythmOption: (n: number) => `${n} นาที`,
+    rhythmOptionTitle: (n: number) => `พักทุก ${n} นาที`,
+    rhythmSpan: (h: number, m: number) => (h > 0 ? (m > 0 ? `${h} ชม. ${m} นาที` : `${h} ชม.`) : `${m} นาที`),
+    rhythmCaption: (n: number, big: string) => `พักสายตาทุก ${n} นาที · ยืดเส้นทุก ${big}`
   }
 } as const;
 
@@ -82,6 +94,9 @@ const streakCaption = document.querySelector('#streak-caption') as HTMLElement;
 const streakDots = document.querySelectorAll<HTMLElement>('.streak-dot');
 const streakHelp = document.querySelector('#streak-help') as HTMLButtonElement;
 const characterButtons = document.querySelectorAll<HTMLButtonElement>('.character-btn');
+const rhythmLabel = document.querySelector('#rhythm-label') as HTMLElement;
+const rhythmRow = document.querySelector('.rhythm-row') as HTMLElement;
+const rhythmCaption = document.querySelector('#rhythm-caption') as HTMLElement;
 
 // Ascending [skin, days] pairs (2/5/7 for sprout/phones/crown), derived from the
 // registry rather than restated here, so the progress dots and the "days to next skin"
@@ -143,6 +158,28 @@ function renderSkinRow(lang: Lang, selected: Skin, unlocked: readonly Skin[], co
   skinRow.innerHTML = html;
 }
 
+// One button per RHYTHM_PRESETS entry. A rhythm outside the presets (hand-edited, or
+// written by a newer build — normalizeRhythmMinutes deliberately accepts a wider range
+// than it offers) simply leaves every button unpressed; the caption below still states
+// the real cadence, so the popup never claims a rhythm that isn't in effect.
+//
+// Same focus-preserving guard as renderSkinRow, for the same reason: refresh() runs
+// once a second, and an unconditional innerHTML replace would blow away keyboard focus
+// within a second of it landing on a button.
+let lastRhythmRowHtml = '';
+function renderRhythmRow(lang: Lang, minutes: number): void {
+  const c = COPY[lang];
+  const html = RHYTHM_PRESETS.map((preset) => {
+    const active = preset === minutes;
+    const title = c.rhythmOptionTitle(preset);
+    return `<button type="button" class="rhythm-btn${active ? ' active' : ''}" data-minutes="${preset}"` +
+      ` aria-pressed="${active}" title="${title}">${c.rhythmOption(preset)}</button>`;
+  }).join('');
+  if (html === lastRhythmRowHtml) return;
+  lastRhythmRowHtml = html;
+  rhythmRow.innerHTML = html;
+}
+
 async function refresh(): Promise<void> {
   const { scheduler, sessionInProgressUntil, streak: rawStreak, counters: rawCounters } = await chrome.storage.local.get(['scheduler', 'sessionInProgressUntil', 'streak', 'counters']) as { scheduler?: SchedulerState; sessionInProgressUntil?: number; streak?: Partial<StreakState>; counters?: Partial<Counters> };
   const settings = { ...DEFAULT_SETTINGS, ...(await chrome.storage.sync.get(DEFAULT_SETTINGS)) } as Settings;
@@ -179,6 +216,29 @@ async function refresh(): Promise<void> {
     btn.textContent = def?.label[lang] ?? '';
     btn.classList.toggle('active', btn.dataset.character === settings.character);
   });
+
+  // Clamped for display exactly as background.ts clamps it for scheduling, so the popup
+  // can never show a rhythm the scheduler would refuse to use. Reading microMinutes
+  // alone is enough: the two are written together and always equal (see RHYTHM_PRESETS).
+  const rhythmMinutes = normalizeRhythmMinutes(settings.microMinutes, DEFAULT_SETTINGS.microMinutes);
+  rhythmLabel.textContent = c.rhythm;
+  rhythmRow.setAttribute('aria-label', c.rhythmGroup);
+  // The cycle is two micro gaps plus the big one, so that sum — NOT rhythm x 3 — is the
+  // true stretch cadence. It reduces to rhythm x 3 whenever the two settings are equal,
+  // which is all this popup can produce; writing it out longhand keeps the caption honest
+  // if storage holds a mismatched pair from a hand edit or a foreign build (getSettings
+  // normalizes the two fields independently, so the background would genuinely run
+  // 30/30/20 while a rhythm x 3 caption claimed 90 minutes). Quoted in hours past 60,
+  // since "every 135 min" is a number the reader has to convert themselves.
+  const bigGap = normalizeRhythmMinutes(settings.bigMinutes, DEFAULT_SETTINGS.bigMinutes);
+  const bigMinutes = rhythmMinutes * (BREAKS_PER_CYCLE - 1) + bigGap;
+  rhythmCaption.textContent = c.rhythmCaption(
+    rhythmMinutes,
+    c.rhythmSpan(Math.floor(bigMinutes / 60), bigMinutes % 60)
+  );
+  // Deliberately still operable while paused or off — a rhythm picked now is picked up
+  // when reminders resume (see reactToIntervalChange in background.ts).
+  renderRhythmRow(lang, rhythmMinutes);
 
   // Streak/skins are independent of the schedule state (on/off/focus) and every
   // early-return branch below, so render them before any of those returns.
@@ -305,6 +365,16 @@ characterButtons.forEach((btn) => {
     await chrome.storage.sync.set({ character: btn.dataset.character as Character });
     await refresh();
   });
+});
+rhythmRow.addEventListener('click', async (e) => {
+  const btn = (e.target as HTMLElement).closest('.rhythm-btn') as HTMLButtonElement | null;
+  if (!btn) return;
+  const minutes = normalizeRhythmMinutes(Number(btn.dataset.minutes), DEFAULT_SETTINGS.microMinutes);
+  // Both keys in ONE set(): they must stay equal for every gap in the cycle to be the
+  // same length (see RHYTHM_PRESETS), and a single write means the background's storage
+  // listener reschedules once instead of twice.
+  await chrome.storage.sync.set({ microMinutes: minutes, bigMinutes: minutes });
+  await refresh();
 });
 skinRow.addEventListener('click', async (e) => {
   const btn = (e.target as HTMLElement).closest('.skin-btn') as HTMLButtonElement | null;

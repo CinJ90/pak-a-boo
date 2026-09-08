@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, isStaleBreak, localDateStr, normalizeStreak, rollActiveDay, type BreakKind, type SchedulerState, type Settings, type Skin, type StreakState } from './types';
+import { DEFAULT_SETTINGS, isStaleBreak, localDateStr, normalizeRhythmMinutes, normalizeStreak, rollActiveDay, type BreakKind, type SchedulerState, type Settings, type Skin, type StreakState } from './types';
 import { activeEventSkin, closeScreenSegment, earnedSkins, moodCounterForHour, normalizeCounters, openScreenSegment, rollCounters, satisfiedMoods, settleFocus, type Counters } from './skins';
 
 const ALARM_NAME = 'pak-a-boo-next-break';
@@ -35,7 +35,15 @@ const NOTIFY_COPY = {
 } as const;
 
 async function getSettings(): Promise<Settings> {
-  return { ...DEFAULT_SETTINGS, ...(await chrome.storage.sync.get(DEFAULT_SETTINGS)) } as Settings;
+  const stored = { ...DEFAULT_SETTINGS, ...(await chrome.storage.sync.get(DEFAULT_SETTINGS)) } as Settings;
+  // The spread above only fills keys that are MISSING — a present-but-nonsense interval
+  // (older build, another synced device, a hand edit) would still reach the alarm math
+  // in scheduleNext below. See normalizeRhythmMinutes for why only these two need it.
+  return {
+    ...stored,
+    microMinutes: normalizeRhythmMinutes(stored.microMinutes, DEFAULT_SETTINGS.microMinutes),
+    bigMinutes: normalizeRhythmMinutes(stored.bigMinutes, DEFAULT_SETTINGS.bigMinutes)
+  };
 }
 
 // Two independent ways reminders can be paused: a timed one-hour focus window, or
@@ -379,6 +387,19 @@ async function notifyBreak(): Promise<void> {
     }
     return;
   }
+  // The schedule this alarm belongs to has already been replaced. Serializing writes
+  // (enqueueWrite) stops transactions clobbering each other, but it cannot un-dispatch an
+  // onAlarm event that Chrome already delivered: clearing the alarm inside scheduleNext()
+  // is too late for one sitting in the queue behind that very transaction. Without this,
+  // changing the rhythm at the exact moment the old alarm fires shows the break
+  // immediately while the popup counts down a fresh full interval. Re-arm and wait —
+  // never drop it, or the cycle would stall with no future alarm. Same check
+  // deliverIfDue() already makes, and placed after the pause branch so the 5-minute focus
+  // poll (which deliberately runs with nextBreakAt in the future) still works.
+  if (scheduler.nextBreakAt > Date.now()) {
+    await chrome.alarms.create(ALARM_NAME, { when: scheduler.nextBreakAt });
+    return;
+  }
   // Another tab is already handling this break, so defer without notifying or
   // counting another ignored nag.
   if (await sessionInProgress()) {
@@ -676,7 +697,59 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.enabled) {
     void enqueueWrite('pauseChange', () => reactToPauseChange(changes.enabled.newValue === false));
   }
+  // The popup writes both keys in a single set(), so this fires once per rhythm change,
+  // not twice. Without this branch a new rhythm wouldn't apply until the NEXT
+  // scheduleNext() — the countdown on screen would keep running toward the old
+  // interval, which reads as the setting having been ignored.
+  if (changes.microMinutes || changes.bigMinutes) {
+    void enqueueWrite('intervalChange', reactToIntervalChange);
+  }
 });
+
+// A rhythm change restarts the countdown from now, the same way resuming from a pause
+// does — picking "45 minutes" should mean the next peek is 45 minutes away, not that
+// the already-running 20-minute countdown finishes first.
+async function reactToIntervalChange(): Promise<void> {
+  assertInTransaction('reactToIntervalChange');
+  const { scheduler } = await chrome.storage.local.get('scheduler') as { scheduler?: SchedulerState };
+  if (!scheduler) { await scheduleNext(); return; }
+  const settings = await getSettings();
+  // Paused (focus or off): nothing is counting down to correct, and resuming always
+  // reschedules fresh from now (see reactToPauseChange) — which reads the settings then
+  // and so picks the new rhythm up on its own.
+  if (isPaused(settings)) return;
+  // Mid-break in some tab — identical reasoning to reactToPauseChange: that session
+  // ignores BREAK_RESOLVED and reschedules for real via TAKE_BREAK when it ends, and
+  // rescheduling out from under it would null breakDueDate and misdate the completion.
+  if (await sessionInProgress()) return;
+  // A break that has already been SHOWN is off limits, because scheduleNext() nulls
+  // breakDueDate (see its own field comment) and that pin is the only thing tying the
+  // break to the day it was shown. Two ways that bites, both found in review:
+  //   1. Shown at 23:52, rhythm changed at 00:05 — the pin is lost, so breakDate() falls
+  //      back to "now", the popup's isStreakAlive flips the displayed streak to 0, and
+  //      completing the break credits the NEW day. A 5-day streak becomes 1.
+  //   2. The user clicked "5 more minutes" on the ghost itself. SNOOZE deliberately
+  //      preserves breakDueDate and goes to some length to guarantee that promised
+  //      return arrives; rescheduling here would throw it away.
+  // Deferring costs nothing real: the new rhythm is picked up by the next scheduleNext()
+  // once the break is taken, skipped, or given up on — the same contract as the paused
+  // and session-in-progress cases above.
+  if (scheduler.breakDueDate !== null) return;
+  // Same comparison reconcileSchedule makes: only the interval this pending break was
+  // actually scheduled against matters, so re-picking the current rhythm doesn't
+  // needlessly throw away progress toward the next peek.
+  const configuredMinutes = scheduler.breakKind === 'big' ? settings.bigMinutes : settings.microMinutes;
+  if (scheduler.scheduledMinutes === configuredMinutes) return;
+  // Same cleanup RESET_CYCLE does, and for the reason spelled out in reactToPauseChange:
+  // a focus window that expired on its own leaves pausedLastCheck set until notifyBreak's
+  // 5-minute poll happens to consume it. Starting a fresh countdown while that flag is
+  // still standing means the next genuinely-due break gets mistaken for a lapsed pause
+  // and quietly deferred — the user watches a full interval count down to zero, nothing
+  // peeks, and the rhythm picker looks like it ate a break.
+  await chrome.storage.local.remove('pausedLastCheck');
+  const changeNow = Date.now();
+  await scheduleNext(changeNow, scheduler.cycleStep, effectiveBreaksToday(scheduler, changeNow));
+}
 
 async function reactToPauseChange(newlyPaused: boolean): Promise<void> {
   assertInTransaction('reactToPauseChange');

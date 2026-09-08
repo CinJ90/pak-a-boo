@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pak-a-boo: Eye Rest",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Eye care reminders using the 20-20-20 rule — take breaks, stretch, and hydrate, with a ghost mascot and skins to unlock.",
   "permissions": ["alarms", "storage", "idle", "notifications", "scripting"],
   "host_permissions": ["http://*/*", "https://*/*"],
